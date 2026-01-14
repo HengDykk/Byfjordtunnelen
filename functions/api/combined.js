@@ -8,7 +8,7 @@ export async function onRequest(context) {
 
   try {
     const headers = {
-      "User-Agent": "Byfjordtunnelen/1.0 (Cloudflare Pages)",
+      "User-Agent": "Byfjordtunnelen/1.0 (Cloudflare Pages)"
     };
 
     if (user && pass) {
@@ -18,7 +18,7 @@ export async function onRequest(context) {
     const res = await fetch(upstream, {
       method: "GET",
       headers,
-      cf: { cacheTtl: 0, cacheEverything: false },
+      cf: { cacheTtl: 0, cacheEverything: false }
     });
 
     const xml = await res.text();
@@ -30,52 +30,9 @@ export async function onRequest(context) {
       );
     }
 
-    const doc = new DOMParser().parseFromString(xml, "application/xml");
-
-    // Hvis parseren feiler, får du ofte <parsererror>
-    const parserErrors = doc.getElementsByTagName("parsererror");
-    if (parserErrors && parserErrors.length) {
-      return json(
-        { updated: new Date().toISOString(), error: "XML parsererror", raw: parserErrors[0].textContent?.slice(0, 2000) || "" },
-        502
-      );
-    }
-
-    // Namespaces gjør querySelector vanskelig. Bruk tagName uten namespace.
-    const records = Array.from(doc.getElementsByTagName("situationRecord"));
-
-    const pickText = (node, tagNames) => {
-      for (const name of tagNames) {
-        const els = node.getElementsByTagName(name);
-        if (els && els.length) {
-          const t = (els[0].textContent || "").trim();
-          if (t) return t;
-        }
-      }
-      return "";
-    };
-
-    const messages = records
-      .map((sr) => {
-        // DATEX: kommentartekst ligger ofte i <comment> under <generalPublicComment> eller andre steder.
-        const text =
-          pickText(sr, ["comment", "causeDescription", "description"]) || "";
-
-        const severity =
-          pickText(sr, ["severity", "impactOnTraffic"]) || "INFO";
-
-        const time =
-          pickText(sr, ["situationRecordCreationTime", "versionTime"]) || "";
-
-        const title = text ? text.split(".")[0].slice(0, 80) : "Trafikkmelding";
-
-        return { title, text, severity, time };
-      })
-      .filter((m) => m.title || m.text)
-      .slice(0, 80);
+    const messages = extractMessagesFromDatex(xml);
 
     const nowIso = new Date().toISOString();
-
     const byfjordRelated = messages.find((m) =>
       (m.title + " " + m.text).toLowerCase().includes("byfjord")
     );
@@ -92,9 +49,9 @@ export async function onRequest(context) {
         updated: nowIso,
         cameras: {
           retningByfjordtunnelen: { image: "", updated: nowIso },
-          retningStavanger: { image: "", updated: nowIso },
-        },
-      },
+          retningStavanger: { image: "", updated: nowIso }
+        }
+      }
     };
 
     return json(payload, 200);
@@ -103,7 +60,7 @@ export async function onRequest(context) {
       {
         updated: new Date().toISOString(),
         error: "Worker exception",
-        message: String(e && e.message ? e.message : e),
+        message: String(e && e.message ? e.message : e)
       },
       500
     );
@@ -116,7 +73,58 @@ function json(obj, status) {
     headers: {
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store",
-      "Access-Control-Allow-Origin": "*",
-    },
+      "Access-Control-Allow-Origin": "*"
+    }
   });
+}
+
+/**
+ * Super robust "best effort" DATEX extractor uten DOMParser.
+ * Henter ut tekstlige meldinger nok til wallboard.
+ */
+function extractMessagesFromDatex(xml) {
+  // 1) Finn alle situationRecord blokker
+  const records = xml.match(/<[^:>]*:?situationRecord\b[\s\S]*?<\/[^:>]*:?situationRecord>/g) || [];
+
+  const takeFirst = (s) => (s ? s.trim() : "");
+
+  const decodeXml = (s) =>
+    s
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&amp;/g, "&")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'");
+
+  const pick = (block, tag) => {
+    // matcher både <tag> og <ns:tag>
+    const re = new RegExp(`<[^:>]*:?${tag}[^>]*>([\\s\\S]*?)<\\/[^:>]*:?${tag}>`, "i");
+    const m = block.match(re);
+    return m ? decodeXml(m[1].replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim() : "";
+  };
+
+  const messages = [];
+
+  for (const r of records) {
+    const comment = pick(r, "comment");
+    const severity = pick(r, "severity") || pick(r, "impactOnTraffic") || "INFO";
+    const created = pick(r, "situationRecordCreationTime") || pick(r, "versionTime") || "";
+
+    // Lag en title som er stabil og kort
+    const title = comment ? comment.split(".")[0].slice(0, 90) : "Trafikkmelding";
+    const text = comment || "";
+
+    if (!title && !text) continue;
+
+    messages.push({
+      title,
+      text,
+      severity: severity || "INFO",
+      time: created
+    });
+
+    if (messages.length >= 80) break;
+  }
+
+  return messages;
 }
