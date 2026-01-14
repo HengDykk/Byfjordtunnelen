@@ -49,52 +49,64 @@ export async function onRequest(context) {
       messagesClean.push(m);
     }
 
-    // Stavanger kommune whitelist, inkl Rennesøy og Finnøy
-    const stavangerWords = [
-      "stavanger",
-      "byfjord",
-      "byfjordtunnelen",
-      "e39",
+    // Strengt kommune filter: krev lokal stedsreferanse, ikke vegnummer.
+// Ikke ha E39 her, den ødelegger alt.
+const stavangerMustHave = [
+  "stavanger",
+  "byfjord",
+  "byfjordtunnelen",
+  "hundvåg",
+  "tasta",
+  "madla",
+  "kvernevik",
+  "sunde",
+  "våland",
+  "eiganes",
+  "storhaug",
+  "hillevåg",
+  "hinna",
+  "gausel",
+  "jåttå",
+  "mariero",
+  "forus",
 
-      "rennesøy",
-      "finnøy",
-      "mosterøy",
-      "åmøy",
-      "vassøy",
+  // Stavanger kommune inkluderer øyene
+  "rennesøy",
+  "finnøy",
+  "mosterøy",
+  "åmøy",
+  "vassøy"
+];
 
-      "hundvåg",
-      "tasta",
-      "madla",
-      "kvernevik",
-      "sunde",
-      "våland",
-      "eiganes",
-      "storhaug",
-      "hillevåg",
-      "hinna",
-      "gausel",
-      "jåttå",
-      "mariero",
-      "forus",
-    ];
+// Ekskluder nabokommuner som ofte dukker opp i tekst
+const stavangerExclude = [
+  "sandnes",
+  "sola",
+  "tananger",
+  "randaberg",
+  "klepp",
+  "time",
+  "bryne",
+  "hå",
+  "skien",
+  "molde",
+  "kristiansand",
+  "trondheim",
+  "skuan",
+  "skaun"
+];
 
-    const excludeWords = [
-      "sandnes",
-      "sola",
-      "tananger",
-      "randaberg",
-      "klepp",
-      "time",
-      "bryne",
-      "hå",
-    ];
+function isStavanger(m) {
+  const t = `${m.title || ""} ${m.text || ""} ${m.where || ""}`.toLowerCase();
 
-    const isStavanger = (m) => {
-      const t = `${m.title} ${m.text} ${m.where}`.toLowerCase();
-      const hasInclude = stavangerWords.some((w) => t.includes(w));
-      const hasExclude = excludeWords.some((w) => t.includes(w));
-      return hasInclude && !hasExclude;
-    };
+  const hasLocal = stavangerMustHave.some((w) => t.includes(w));
+  if (!hasLocal) return false;
+
+  const hasBad = stavangerExclude.some((w) => t.includes(w));
+  if (hasBad) return false;
+
+  return true;
+}
 
     const stavangerOnly = messagesClean.filter(isStavanger);
 
