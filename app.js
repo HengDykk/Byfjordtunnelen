@@ -128,8 +128,9 @@
                 <div class="item ${cls}">
                   <div class="badge"></div>
                   <div class="itemMain">
-                    <div class="itemTitle">${title}</div>
-                    <div class="itemText">${text}</div>
+                    <div class="itemTitle">${esc(m.title)}</div>
+                    ${m.where ? `<div class="itemWhere">${esc(m.where)}</div>` : ``}
+                    <div class="itemText">${esc(m.text)}</div>
                   </div>
                 </div>
               `;
