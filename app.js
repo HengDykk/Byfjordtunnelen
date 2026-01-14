@@ -2,10 +2,10 @@
   const el = (id) => document.getElementById(id);
 
   const CONFIG = {
-    api: "https://trafikkmeldinger.pages.dev/api/combined?region=stavanger",
+    api: "/api/combined?region=stavanger",
     refreshRate: 60000,
     clockRate: 1000,
-    retryAfterErrorMs: 20000
+    camRefreshRate: 30000
   };
 
   const dom = {
@@ -23,14 +23,11 @@
     health: el("health")
   };
 
-  let retryTimer = null;
-
   function updateGlobalTheme(status) {
     if (!dom.app) return;
-
     dom.app.classList.remove("good", "bad", "warn");
-    const s = String(status || "").toUpperCase();
 
+    const s = String(status || "").toUpperCase();
     if (s === "ÅPEN") dom.app.classList.add("good");
     else if (s === "STENGT") dom.app.classList.add("bad");
     else dom.app.classList.add("warn");
@@ -46,56 +43,52 @@
     }
   }
 
-  function escHtml(s) {
-    return String(s ?? "")
+  function esc(s) {
+    return String(s || "")
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
+      .replace(/>/g, "&gt;");
   }
 
-  function escHtmlWithBreaks(s) {
-    return escHtml(s).replace(/\n/g, "<br>");
-  }
+  function setCameraSources() {
+    const bust = Date.now();
 
-  function severityClass(sevRaw) {
-    const sev = String(sevRaw || "").toLowerCase();
-    // DATEX typiske verdier: none, low, high, highest, unknown
-    if (sev === "highest" || sev === "high") return "bad";
-    if (sev === "low") return "warn";
-    return "info";
-  }
+    if (dom.cam1) {
+      dom.cam1.src = `/api/cam?id=nord&t=${bust}`;
+      dom.cam1.onerror = () => {
+        dom.cam1.removeAttribute("src");
+      };
+    }
 
-  function statusPillText(statusRaw) {
-    const s = String(statusRaw || "").toUpperCase();
-    if (s === "ÅPEN") return "FRI FLYT";
-    if (s === "STENGT") return "STENGT";
-    if (s === "AVVIK") return "AVVIK";
-    return "SJEKK STATUS";
+    if (dom.cam2) {
+      dom.cam2.src = `/api/cam?id=sor&t=${bust}`;
+      dom.cam2.onerror = () => {
+        dom.cam2.removeAttribute("src");
+      };
+    }
   }
 
   async function load() {
     try {
-      if (retryTimer) {
-        clearTimeout(retryTimer);
-        retryTimer = null;
-      }
-
       const response = await fetch(CONFIG.api, { cache: "no-store" });
       if (!response.ok) throw new Error(`Status ${response.status}`);
 
       const data = await response.json();
-
       const by = data.byfjord || {};
-      const events = (data.stavanger && data.stavanger.messages) ? data.stavanger.messages : [];
+      const events = data.stavanger?.messages || [];
       const status = String(by.status || "UKJENT").toUpperCase();
 
       updateGlobalTheme(status);
 
       if (dom.statusText) dom.statusText.textContent = status;
-      if (dom.statusReason) dom.statusReason.textContent = by.reason || "Ingen avvik som påvirker Byfjordtunnelen.";
-      if (dom.pill) dom.pill.textContent = statusPillText(status);
+      if (dom.statusReason) dom.statusReason.textContent = by.reason || "Ingen spesielle merknader.";
+
+      if (dom.pill) {
+        dom.pill.textContent =
+          status === "ÅPEN" ? "FRI FLYT" :
+          status === "STENGT" ? "STENGT" :
+          status === "AVVIK" ? "AVVIK" : "SJEKK STATUS";
+      }
 
       const updatedStr = fmtTime(data.updated || by.updated);
       if (dom.updated) dom.updated.textContent = "Oppdatert: " + updatedStr;
@@ -103,73 +96,54 @@
       if (dom.camStamp1) dom.camStamp1.textContent = updatedStr;
       if (dom.camStamp2) dom.camStamp2.textContent = updatedStr;
 
-      // Kamera er tomt inntil eget kamera endepunkt er på plass
-      const bust = Date.now();
-
-      if (dom.cam1) {
-        const url = by?.cameras?.retningByfjordtunnelen?.image;
-        if (url) dom.cam1.src = url + (url.includes("?") ? "&" : "?") + "t=" + bust;
-      }
-
-      if (dom.cam2) {
-        const url = by?.cameras?.retningStavanger?.image;
-        if (url) dom.cam2.src = url + (url.includes("?") ? "&" : "?") + "t=" + bust;
-      }
-
       if (dom.items) {
         if (!events.length) {
           dom.items.innerHTML = `<div class="skeleton">Ingen aktive hendelser i Stavanger.</div>`;
         } else {
-          dom.items.innerHTML = events
-            .map((m) => {
-              const cls = severityClass(m.severity);
-              return `
-                <div class="item ${cls}">
-                  <div class="badge"></div>
-                  <div class="itemMain">
-                    <div class="itemTitle">${escHtml(m.title)}</div>
-                    ${m.where ? `<div class="itemWhere">${escHtml(m.where)}</div>` : ""}
-                    <div class="itemText">${escHtmlWithBreaks(m.text)}</div>
-                  </div>
+          dom.items.innerHTML = events.map(m => {
+            const sev = String(m.severity || "").toUpperCase();
+            const cls =
+              sev === "HIGH" || sev === "HIGHEST" ? "bad" :
+              sev === "MEDIUM" ? "warn" : "info";
+
+            const whereLine = m.where ? `<div class="itemWhere">${esc(m.where)}</div>` : "";
+
+            return `
+              <div class="item ${cls}">
+                <div class="badge"></div>
+                <div class="itemMain">
+                  <div class="itemTitle">${esc(m.title)}</div>
+                  ${whereLine}
+                  <div class="itemText">${esc(m.text)}</div>
                 </div>
-              `;
-            })
-            .join("");
+              </div>`;
+          }).join("");
         }
       }
 
       if (dom.health) dom.health.textContent = "System status: OK";
     } catch (err) {
-      console.error("Fetch error:", err);
-
       updateGlobalTheme("FEIL");
       if (dom.statusText) dom.statusText.textContent = "KOBLINGSFEIL";
-      if (dom.statusReason) {
-        dom.statusReason.textContent =
-          "Kunne ikke hente data (API feil: " + (err?.message || err) + "). Forsøker igjen snart.";
-      }
+      if (dom.statusReason) dom.statusReason.textContent =
+        "Kunne ikke hente data (API feil: " + (err?.message || err) + "). Forsøker igjen snart.";
       if (dom.pill) dom.pill.textContent = "OFFLINE";
       if (dom.health) dom.health.textContent = "Sjekk internett eller API status";
-
-      if (!retryTimer) {
-        retryTimer = setTimeout(() => {
-          retryTimer = null;
-          load();
-        }, CONFIG.retryAfterErrorMs);
-      }
     }
   }
 
   function tick() {
-    if (!dom.clock) return;
-    dom.clock.textContent = new Date().toLocaleTimeString("no-NO", {
-      hour: "2-digit",
-      minute: "2-digit"
-    });
+    if (dom.clock) {
+      dom.clock.textContent = new Date().toLocaleTimeString("no-NO", { hour: "2-digit", minute: "2-digit" });
+    }
   }
 
   tick();
   setInterval(tick, CONFIG.clockRate);
+
+  setCameraSources();
+  setInterval(setCameraSources, CONFIG.camRefreshRate);
+
   load();
   setInterval(load, CONFIG.refreshRate);
 })();
