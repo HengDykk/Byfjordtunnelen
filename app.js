@@ -3,9 +3,9 @@
 
   const CONFIG = {
     api: "https://trafikkmeldinger.pages.dev/api/combined?region=stavanger",
-    refreshRateMs: 60_000,
-    clockRateMs: 1_000,
-    retryAfterErrorMs: 20_000
+    refreshRate: 60000,
+    clockRate: 1000,
+    retryAfterErrorMs: 20000
   };
 
   const dom = {
@@ -29,7 +29,6 @@
     if (!dom.app) return;
 
     dom.app.classList.remove("good", "bad", "warn");
-
     const s = String(status || "").toUpperCase();
 
     if (s === "ÅPEN") dom.app.classList.add("good");
@@ -48,10 +47,12 @@
   }
 
   function escHtml(s) {
-    return String(s || "")
+    return String(s ?? "")
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
   }
 
   function escHtmlWithBreaks(s) {
@@ -60,7 +61,6 @@
 
   function severityClass(sevRaw) {
     const sev = String(sevRaw || "").toLowerCase();
-
     // DATEX typiske verdier: none, low, high, highest, unknown
     if (sev === "highest" || sev === "high") return "bad";
     if (sev === "low") return "warn";
@@ -88,19 +88,20 @@
       const data = await response.json();
 
       const by = data.byfjord || {};
-      const events = data.stavanger?.messages || [];
+      const events = (data.stavanger && data.stavanger.messages) ? data.stavanger.messages : [];
       const status = String(by.status || "UKJENT").toUpperCase();
 
       updateGlobalTheme(status);
 
       if (dom.statusText) dom.statusText.textContent = status;
-      if (dom.statusReason) dom.statusReason.textContent = by.reason || "Ingen spesielle merknader.";
+      if (dom.statusReason) dom.statusReason.textContent = by.reason || "Ingen avvik som påvirker Byfjordtunnelen.";
       if (dom.pill) dom.pill.textContent = statusPillText(status);
 
-      const timeStr = fmtTime(data.updated || by.updated);
-      if (dom.updated) dom.updated.textContent = "Oppdatert: " + timeStr;
-      if (dom.camStamp1) dom.camStamp1.textContent = timeStr;
-      if (dom.camStamp2) dom.camStamp2.textContent = timeStr;
+      const updatedStr = fmtTime(data.updated || by.updated);
+      if (dom.updated) dom.updated.textContent = "Oppdatert: " + updatedStr;
+
+      if (dom.camStamp1) dom.camStamp1.textContent = updatedStr;
+      if (dom.camStamp2) dom.camStamp2.textContent = updatedStr;
 
       // Kamera er tomt inntil eget kamera endepunkt er på plass
       const bust = Date.now();
@@ -122,15 +123,13 @@
           dom.items.innerHTML = events
             .map((m) => {
               const cls = severityClass(m.severity);
-              const title = escHtml(m.title);
-              const text = escHtmlWithBreaks(m.text);
               return `
                 <div class="item ${cls}">
                   <div class="badge"></div>
                   <div class="itemMain">
-                    <div class="itemTitle">${esc(m.title)}</div>
-                    ${m.where ? `<div class="itemWhere">${esc(m.where)}</div>` : ``}
-                    <div class="itemText">${esc(m.text)}</div>
+                    <div class="itemTitle">${escHtml(m.title)}</div>
+                    ${m.where ? `<div class="itemWhere">${escHtml(m.where)}</div>` : ""}
+                    <div class="itemText">${escHtmlWithBreaks(m.text)}</div>
                   </div>
                 </div>
               `;
@@ -170,7 +169,7 @@
   }
 
   tick();
-  setInterval(tick, CONFIG.clockRateMs);
+  setInterval(tick, CONFIG.clockRate);
   load();
-  setInterval(load, CONFIG.refreshRateMs);
+  setInterval(load, CONFIG.refreshRate);
 })();
