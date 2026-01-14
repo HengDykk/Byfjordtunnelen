@@ -90,13 +90,20 @@
 
       // 3. Oppdater Kamera (med cache-busting)
       const bust = Date.now();
+      
       if (dom.cam1) {
-        const url = by?.cameras?.retningByfjordtunnelen?.image || "img/byfjord";
-        dom.cam1.src = (url.startsWith('http') ? url : CONFIG.api.replace('/api/combined', url)) + "?t=" + bust;
+        // Henter bilde-URL fra API, eller bruker en tom streng hvis data mangler
+        const url = by?.cameras?.retningByfjordtunnelen?.image;
+        if (url) {
+          dom.cam1.src = url + "?t=" + bust;
+        }
       }
+      
       if (dom.cam2) {
-        const url = by?.cameras?.retningStavanger?.image || "img/stavanger";
-        dom.cam2.src = (url.startsWith('http') ? url : CONFIG.api.replace('/api/combined', url)) + "?t=" + bust;
+        const url = by?.cameras?.retningStavanger?.image;
+        if (url) {
+          dom.cam2.src = url + "?t=" + bust;
+        }
       }
 
       // 4. Oppdater Hendelsesliste
