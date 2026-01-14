@@ -2,9 +2,10 @@
   // --- Hjelpefunksjon for DOM ---
   const el = (id) => document.getElementById(id);
 
-  // --- Konfigurasjon ---
+ // --- Konfigurasjon ---
   const CONFIG = {
-    api: "https://byfjordtunnelen.arild-dahl-andersen.workers.dev/api/combined",
+    // Vi fjerner den slettede workeren og går rett til kilden
+    api: "https://tavle.atlas.vegvesen.no/api/combined?region=stavanger", 
     refreshRate: 60000, // 60 sekunder
     clockRate: 1000
   };
