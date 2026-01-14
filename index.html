@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="no">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#05070C" />
+
+  <title>Trafikkstatus – Stavanger Wallboard</title>
+
+  <link rel="preload" href="./styles.css" as="style" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="app" id="app">
+    
+    <header class="top">
+      <div class="brand">
+        <div class="hdot" id="headerDot" aria-hidden="true"></div>
+        <div class="brandText">
+          <div class="title">Trafikkstatus</div>
+          <div class="sub">Byfjordtunnelen • E39 Stavanger</div>
+        </div>
+      </div>
+
+      <div class="meta">
+        <div class="chip" id="clock">--:--</div>
+        <div class="chip" id="updated">Initialiserer...</div>
+      </div>
+    </header>
+
+    <main class="grid">
+      <section class="card hero" id="hero" aria-label="Tunnelstatus">
+        <div class="heroTop">
+          <div>
+            <div class="kicker">Nåværende status</div>
+
+            <div class="statusWrap">
+              <div class="indicator" id="mainIndicator" aria-hidden="true"></div>
+              <h1 class="status" id="statusText">Henter...</h1>
+            </div>
+
+            <div class="reason" id="statusReason">Synkroniserer med Statens Vegvesen. Vennligst vent.</div>
+          </div>
+
+          <div class="pill" id="pill">Venter</div>
+        </div>
+
+        <div class="cams" aria-label="Live kamerafeed">
+          <figure class="cam">
+            <div class="camHead">
+              <span>Mot Byfjord / Rennesøy</span>
+              <span class="stamp" id="camStamp1">--:--</span>
+            </div>
+            <img id="cam1" alt="Kamera Nord" loading="eager" />
+          </figure>
+
+          <figure class="cam">
+            <div class="camHead">
+              <span>Mot Stavanger sentrum</span>
+              <span class="stamp" id="camStamp2">--:--</span>
+            </div>
+            <img id="cam2" alt="Kamera Sør" loading="eager" />
+          </figure>
+        </div>
+      </section>
+
+      <section class="card list" aria-label="Trafikkmeldinger">
+        <div class="listHead">
+          <h2 class="h2">Andre hendelser</h2>
+          <div class="hint">Stavanger-regionen</div>
+        </div>
+        <div class="items" id="items">
+          <div class="skeleton">Laster trafikkmeldinger...</div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <div class="note">Kilde: Statens Vegvesen (DATEX II)</div>
+      <div class="note" id="health">System status: OK</div>
+    </footer>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
