@@ -1,16 +1,12 @@
 (() => {
-  // --- Hjelpefunksjon for DOM ---
   const el = (id) => document.getElementById(id);
 
- // --- Konfigurasjon ---
   const CONFIG = {
-    // Vi bruker en proxy for å hente dataene fra Vegvesenet uten å bli blokkert
-    api: "/api/combined?region=stavanger", + encodeURIComponent("https://tavle.atlas.vegvesen.no/api/combined?region=stavanger"),
-    refreshRate: 60000, // 60 sekunder
+    api: "/api/combined?region=stavanger",
+    refreshRate: 60000,
     clockRate: 1000
   };
 
-  // --- DOM Referanser ---
   const dom = {
     app: el("app"),
     statusText: el("statusText"),
@@ -26,91 +22,72 @@
     health: el("health")
   };
 
-  // --- Tema-styring ---
   function updateGlobalTheme(status) {
     if (!dom.app) return;
-    
-    // Fjern eksisterende statusklasser
     dom.app.classList.remove("good", "bad", "warn");
-    
+
     const s = String(status || "").toUpperCase();
-    
-    if (s === "ÅPEN") {
-      dom.app.classList.add("good");
-    } else if (s === "STENGT") {
-      dom.app.classList.add("bad");
-    } else {
-      // Fail-safe: "AVVIK", "UKJENT", "FEIL" eller nettverksproblemer blir GULT
-      dom.app.classList.add("warn");
-    }
+    if (s === "ÅPEN") dom.app.classList.add("good");
+    else if (s === "STENGT") dom.app.classList.add("bad");
+    else dom.app.classList.add("warn");
   }
 
-  // --- Formatering ---
   function fmtTime(iso) {
     try {
       if (!iso) return "--:--";
       const d = new Date(iso);
       return d.toLocaleTimeString("no-NO", { hour: "2-digit", minute: "2-digit" });
-    } catch { return "--:--"; }
+    } catch {
+      return "--:--";
+    }
   }
 
   function esc(s) {
-    return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    return String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
   }
 
-  // --- Datauthenting ---
   async function load() {
     try {
       const response = await fetch(CONFIG.api, { cache: "no-store" });
-      
-      // Håndter HTTP-feil (som 503 Service Unavailable)
       if (!response.ok) throw new Error(`Status ${response.status}`);
-      
+
       const data = await response.json();
       const by = data.byfjord || {};
       const events = data.stavanger?.messages || [];
-      const status = (by.status || "UKJENT").toUpperCase();
+      const status = String(by.status || "UKJENT").toUpperCase();
 
-      // 1. Oppdater Hovedstatus og Tema
       updateGlobalTheme(status);
+
       if (dom.statusText) dom.statusText.textContent = status;
       if (dom.statusReason) dom.statusReason.textContent = by.reason || "Ingen spesielle merknader.";
-      
+
       if (dom.pill) {
-        dom.pill.textContent = 
-          status === "ÅPEN" ? "FRI FLYT" : 
-          status === "STENGT" ? "STENGT" : 
+        dom.pill.textContent =
+          status === "ÅPEN" ? "FRI FLYT" :
+          status === "STENGT" ? "STENGT" :
           status === "AVVIK" ? "AVVIK" : "SJEKK STATUS";
       }
 
-      // 2. Oppdater Tider
-      const timeStr = fmtTime(data.updated || by.updated);
-      if (dom.updated) dom.updated.textContent = "Oppdatert: " + timeStr;
-      if (dom.camStamp1) dom.camStamp1.textContent = timeStr;
-      if (dom.camStamp2) dom.camStamp2.textContent = timeStr;
+      const updatedStr = fmtTime(data.updated || by.updated);
+      if (dom.updated) dom.updated.textContent = "Oppdatert: " + updatedStr;
 
-      // 3. Oppdater Kamera (med cache-busting)
+      const cam1Updated = by?.cameras?.retningByfjordtunnelen?.updated;
+      const cam2Updated = by?.cameras?.retningStavanger?.updated;
+      if (dom.camStamp1) dom.camStamp1.textContent = fmtTime(cam1Updated || data.updated || by.updated);
+      if (dom.camStamp2) dom.camStamp2.textContent = fmtTime(cam2Updated || data.updated || by.updated);
+
       const bust = Date.now();
-      
-      if (dom.cam1) {
-        // Henter bilde-URL fra API, eller bruker en tom streng hvis data mangler
-        const url = by?.cameras?.retningByfjordtunnelen?.image;
-        if (url) {
-          dom.cam1.src = url + "?t=" + bust;
-        }
-      }
-      
-      if (dom.cam2) {
-        const url = by?.cameras?.retningStavanger?.image;
-        if (url) {
-          dom.cam2.src = url + "?t=" + bust;
-        }
-      }
+      const cam1Url = by?.cameras?.retningByfjordtunnelen?.image;
+      const cam2Url = by?.cameras?.retningStavanger?.image;
+      if (dom.cam1 && cam1Url) dom.cam1.src = cam1Url + "?t=" + bust;
+      if (dom.cam2 && cam2Url) dom.cam2.src = cam2Url + "?t=" + bust;
 
-      // 4. Oppdater Hendelsesliste
       if (dom.items) {
         if (!events.length) {
-          dom.items.innerHTML = `<div class="skeleton">Ingen aktive hendelser i Stavanger.</div>`;
+          dom.items.innerHTML = `<div class="skeleton">Ingen hendelser registrert</div>`;
         } else {
           dom.items.innerHTML = events.map(m => {
             const sev = String(m.severity || "").toUpperCase();
@@ -128,32 +105,24 @@
       }
 
       if (dom.health) dom.health.textContent = "System status: OK";
-
     } catch (err) {
-      console.error("Fetch error:", err);
-      
-      // --- FAIL-SAFE MODUS ---
-      updateGlobalTheme("FEIL"); // Setter alt til GULT
+      updateGlobalTheme("FEIL");
       if (dom.statusText) dom.statusText.textContent = "KOBLINGSFEIL";
-      if (dom.statusReason) dom.statusReason.textContent = "Kunne ikke hente data (API feil: " + err.message + "). Forsøker igjen om 20s.";
+      if (dom.statusReason) dom.statusReason.textContent =
+        "Kunne ikke hente data (API feil: " + (err?.message || err) + "). Prøver igjen automatisk.";
       if (dom.pill) dom.pill.textContent = "OFFLINE";
       if (dom.health) dom.health.textContent = "Sjekk internett / API-status";
     }
   }
 
-  // --- Klokke ---
   function tick() {
     if (dom.clock) {
-      dom.clock.textContent = new Date().toLocaleTimeString("no-NO", {
-        hour: "2-digit",
-        minute: "2-digit"
-      });
+      dom.clock.textContent = new Date().toLocaleTimeString("no-NO", { hour: "2-digit", minute: "2-digit" });
     }
   }
 
-  // Start
   tick();
-  setInterval(tick, 1000);
+  setInterval(tick, CONFIG.clockRate);
   load();
   setInterval(load, CONFIG.refreshRate);
 })();
