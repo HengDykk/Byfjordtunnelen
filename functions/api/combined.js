@@ -1,17 +1,23 @@
 export async function onRequest(context) {
-  const url = new URL(context.request.url);
-  const region = url.searchParams.get("region") || "stavanger";
-
   const env = context.env || {};
   const user = env.DATEX_USER;
   const pass = env.DATEX_PASS;
   const token = env.DATEX_TOKEN;
 
+  // 🔴 SETT DENNE
+  const subscriptionId = env.DATEX_SUBSCRIPTION_ID; // må settes i Pages settings
+
+  if (!subscriptionId) {
+    return new Response("Manglende DATEX_SUBSCRIPTION_ID", { status: 500 });
+  }
+
   const upstream =
-    "https://datex-server-get-v3-1.atlas.vegvesen.no/datexapi/GetSituation/pullsnapshotdata";
+    "https://datex-server-get-v3-1.atlas.vegvesen.no/datexapi/GetSituation/pullsnapshotdata" +
+    "?subscriptionId=" + encodeURIComponent(subscriptionId);
 
   const headers = {
     "Accept": "application/xml",
+    "Content-Type": "application/xml",
     "User-Agent": "Byfjordtunnelen/1.0 (Cloudflare Pages)"
   };
 
@@ -27,81 +33,14 @@ export async function onRequest(context) {
     cf: { cacheTtl: 0, cacheEverything: false }
   });
 
-  const xml = await res.text();
+  const body = await res.text();
 
-  if (!res.ok) {
-    return new Response(
-      `Upstream feilet. Status ${res.status}\n\n${xml}`,
-      {
-        status: res.status,
-        headers: {
-          "Content-Type": "text/plain; charset=utf-8",
-          "Cache-Control": "no-store",
-          "Access-Control-Allow-Origin": "*"
-        }
-      }
-    );
-  }
-
-  const nowIso = new Date().toISOString();
-
-  let doc;
-  try {
-    doc = new DOMParser().parseFromString(xml, "application/xml");
-  } catch {
-    return new Response(JSON.stringify({ updated: nowIso, error: "Kunne ikke parse XML" }), {
-      status: 502,
-      headers: {
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": "no-store",
-        "Access-Control-Allow-Origin": "*"
-      }
-    });
-  }
-
-  const situations = Array.from(doc.querySelectorAll("situationRecord"));
-
-  const messages = situations
-    .map((sr) => {
-      const title =
-        sr.querySelector("generalPublicComment comment")?.textContent?.trim() ||
-        sr.querySelector("comment comment")?.textContent?.trim() ||
-        "Trafikkmelding";
-
-      const text =
-        sr.querySelector("generalPublicComment comment")?.textContent?.trim() ||
-        sr.querySelector("comment comment")?.textContent?.trim() ||
-        sr.querySelector("causeDescription")?.textContent?.trim() ||
-        "";
-
-      const severity =
-        sr.querySelector("severity")?.textContent?.trim() ||
-        sr.querySelector("impactOnTraffic")?.textContent?.trim() ||
-        "INFO";
-
-      return { title, text, severity };
-    })
-    .filter((m) => (m.title && m.title.length) || (m.text && m.text.length))
-    .slice(0, 50);
-
-  const payload = {
-    updated: nowIso,
-    stavanger: { messages },
-    byfjord: {
-      status: "ÅPEN",
-      reason: "",
-      updated: nowIso,
-      cameras: {
-        retningByfjordtunnelen: { image: "", updated: nowIso },
-        retningStavanger: { image: "", updated: nowIso }
-      }
-    }
-  };
-
-  return new Response(JSON.stringify(payload), {
-    status: 200,
+  return new Response(body, {
+    status: res.status,
     headers: {
-      "Content-Type": "application/json; charset=utf-8",
+      "Content-Type": res.ok
+        ? "application/xml; charset=utf-8"
+        : "text/plain; charset=utf-8",
       "Cache-Control": "no-store",
       "Access-Control-Allow-Origin": "*"
     }
