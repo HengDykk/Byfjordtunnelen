@@ -7,11 +7,9 @@ export async function onRequest(context) {
     "https://datex-server-get-v3-1.atlas.vegvesen.no/datexapi/GetSituation/pullsnapshotdata";
 
   const headers = {
-    // Ikke tving format. La serveren velge.
-    "User-Agent": "Byfjordtunnelen/1.0 (Cloudflare Pages)",
+    "User-Agent": "Byfjordtunnelen/1.0 (Cloudflare Pages)"
   };
 
-  // NPRA spec: HTTP GET er sikret med Basic Authentication. :contentReference[oaicite:1]{index=1}
   if (user && pass) {
     headers.Authorization = "Basic " + btoa(`${user}:${pass}`);
   }
@@ -19,31 +17,89 @@ export async function onRequest(context) {
   const res = await fetch(upstream, {
     method: "GET",
     headers,
-    cf: { cacheTtl: 0, cacheEverything: false },
+    cf: { cacheTtl: 0, cacheEverything: false }
   });
 
-  const body = await res.text();
+  const xml = await res.text();
 
-  // Returner alltid diagnostikk som JSON så du ser *hvorfor* det feiler
-  return new Response(
-    JSON.stringify(
+  if (!res.ok) {
+    return new Response(
+      JSON.stringify({ updated: new Date().toISOString(), error: `Upstream ${res.status}`, raw: xml.slice(0, 2000) }),
       {
-        upstream,
-        upstreamStatus: res.status,
-        upstreamContentType: res.headers.get("content-type"),
-        // NB: Ikke legg auth i output
-        body: body.slice(0, 5000), // kutt for å unngå gigantrespons
-      },
-      null,
-      2
-    ),
-    {
-      status: 200,
-      headers: {
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": "no-store",
-        "Access-Control-Allow-Origin": "*",
-      },
+        status: 502,
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "*"
+        }
+      }
+    );
+  }
+
+  const nowIso = new Date().toISOString();
+
+  // Parse DATEX XML
+  const doc = new DOMParser().parseFromString(xml, "application/xml");
+
+  // Finn alle situationRecord
+  const records = Array.from(doc.querySelectorAll("situationRecord"));
+
+  const messages = records
+    .map((sr) => {
+      const get = (sel) => sr.querySelector(sel)?.textContent?.trim() || "";
+
+      // DATEX: kommentar for publikum ligger ofte her
+      const text =
+        get("generalPublicComment comment") ||
+        get("comment comment") ||
+        get("causeDescription") ||
+        "";
+
+      const title =
+        get("situationRecordType") ||
+        get("situationRecordCreationReference") ||
+        (text ? text.split(".")[0].slice(0, 80) : "Trafikkmelding");
+
+      const severity = get("severity") || get("impactOnTraffic") || "INFO";
+
+      // Forsøk å hente tidspunkt
+      const created = get("situationRecordCreationTime") || get("versionTime") || "";
+
+      return {
+        title,
+        text,
+        severity,
+        time: created
+      };
+    })
+    .filter((m) => m.title || m.text)
+    .slice(0, 80);
+
+  // Enkel "Byfjord" heuristikk for status
+  const byText = (m) => (m.title + " " + m.text).toLowerCase();
+  const byfjordRelated = messages.find((m) => byText(m).includes("byfjord"));
+  const byfjordClosed = byfjordRelated ? /stengt|closed|closure/i.test(byText(byfjordRelated)) : false;
+
+  const payload = {
+    updated: nowIso,
+    stavanger: { messages },
+    byfjord: {
+      status: byfjordClosed ? "STENGT" : "ÅPEN",
+      reason: byfjordRelated ? (byfjordRelated.text || byfjordRelated.title) : "",
+      updated: nowIso,
+      cameras: {
+        retningByfjordtunnelen: { image: "", updated: nowIso },
+        retningStavanger: { image: "", updated: nowIso }
+      }
     }
-  );
+  };
+
+  return new Response(JSON.stringify(payload), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+      "Access-Control-Allow-Origin": "*"
+    }
+  });
 }
