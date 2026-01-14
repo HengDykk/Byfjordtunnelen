@@ -49,29 +49,80 @@ export async function onRequest(context) {
       messagesClean.push(m);
     }
 
-    // Lokal filtrering, juster listen hvis du vil være strengere eller bredere
-    const keywords = [
-      "byfjord",
-      "byfjordtunnelen",
-      "rennesøy",
-      "e39",
-      "stavanger",
-      "sokn",
-      "randaberg",
-      "tunnel",
-      "tunnelen",
-      "eiganes",
-      "tasta",
-      "madla",
-    ];
+    // Stavanger kommune whitelist (inkl Rennesøy og Finnøy)
+const stavangerWords = [
+  "stavanger",
+  "byfjord",
+  "byfjordtunnelen",
+  "e39",
 
-    let localOnly = messagesClean.filter((m) => {
-      const t = (m.title + " " + m.text).toLowerCase();
-      return keywords.some((k) => t.includes(k));
-    });
+  // tidligere Rennesøy og Finnøy kommuner, nå Stavanger
+  "rennesøy",
+  "finnøy",
+  "mosterøy",
+  "åmøy",
+  "vassøy",
 
-    // Fallback hvis filteret blir tomt
-    if (!localOnly.length) localOnly = messagesClean.slice(0, 15);
+  // bydeler og steder i Stavanger
+  "hundvåg",
+  "tasta",
+  "madla",
+  "kvernevik",
+  "sunde",
+  "våland",
+  "eiganes",
+  "storhaug",
+  "hillevåg",
+  "hinna",
+  "gausel",
+  "jåttå",
+  "jåtten",
+  "mariero",
+  "forus"
+];
+
+// Ekskluder nabokommuner og typiske steder utenfor Stavanger
+const excludeWords = [
+  "sandnes",
+  "sola",
+  "tananger",
+  "randaberg",
+  "klepp",
+  "time",
+  "bryne",
+  "hå",
+  "haugesund",
+  "karmøy",
+  "stord",
+  "bokn",
+  "tysvær"
+];
+
+const isStavanger = (m) => {
+  const t = (m.title + " " + m.text).toLowerCase();
+  const hasInclude = stavangerWords.some(w => t.includes(w));
+  const hasExclude = excludeWords.some(w => t.includes(w));
+  return hasInclude && !hasExclude;
+};
+
+const stavangerOnly = messagesClean.filter(isStavanger);
+
+// Hvis det blir helt tomt, vis likevel de mest relevante i Rogaland basert på score
+const scored = messagesClean.map((m) => {
+  const t = (m.title + " " + m.text).toLowerCase();
+  const score = stavangerWords.reduce((acc, w) => acc + (t.includes(w) ? 1 : 0), 0);
+  return { m, score };
+});
+
+scored.sort((a, b) => {
+  if (b.score !== a.score) return b.score - a.score;
+  const ta = Date.parse(a.m.time || "") || 0;
+  const tb = Date.parse(b.m.time || "") || 0;
+  return tb - ta;
+});
+
+const localOnly = stavangerOnly.length ? stavangerOnly.slice(0, 25) : scored.slice(0, 25).map(x => x.m);
+
 
     const nowIso = new Date().toISOString();
 

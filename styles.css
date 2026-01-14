@@ -37,10 +37,14 @@ body {
 /* Dynamisk bakgrunnsglød styrt av status-klasse på #app */
 .app {
   height: 100%; width: 100%;
-  padding: calc(24px * var(--scale));
+  padding:
+    calc(24px * var(--scale) + env(safe-area-inset-top))
+    calc(24px * var(--scale) + env(safe-area-inset-right))
+    calc(24px * var(--scale) + env(safe-area-inset-bottom))
+    calc(24px * var(--scale) + env(safe-area-inset-left));
   display: flex; flex-direction: column; gap: calc(18px * var(--scale));
   transition: background 0.5s ease;
-  background: 
+  background:
     radial-gradient(circle at 50% -20%, var(--status-glow, transparent), transparent 70%),
     linear-gradient(180deg, var(--bg0), var(--bg1));
 }
@@ -89,7 +93,7 @@ body {
 }
 
 /* Hero Section (Hovedstatus) */
-.hero { padding: calc(30px * var(--scale)); position: relative; justify-content: space-between; }
+.hero { padding: calc(36px * var(--scale)); position: relative; justify-content: space-between; }
 
 /* Subtil ramme-farge som følger status */
 .hero::after {
