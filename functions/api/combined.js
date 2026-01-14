@@ -1,37 +1,54 @@
 export async function onRequest(context) {
-  const nowIso = new Date().toISOString();
+  const url = new URL(context.request.url);
+  const region = url.searchParams.get("region") || "stavanger";
 
-  // Offisiell DATEX feed for trafikkmeldinger (GetSituation)
+  const env = context.env || {};
+  const user = env.DATEX_USER;
+  const pass = env.DATEX_PASS;
+  const token = env.DATEX_TOKEN;
+
   const upstream =
     "https://datex-server-get-v3-1.atlas.vegvesen.no/datexapi/GetSituation/pullsnapshotdata";
 
+  const headers = {
+    "Accept": "application/xml",
+    "User-Agent": "Byfjordtunnelen/1.0 (Cloudflare Pages)"
+  };
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  } else if (user && pass) {
+    headers.Authorization = "Basic " + btoa(`${user}:${pass}`);
+  }
+
   const res = await fetch(upstream, {
-    headers: {
-      "Accept": "application/xml",
-      "User-Agent": "Byfjordtunnelen/1.0 (Cloudflare Pages)"
-    },
+    method: "GET",
+    headers,
     cf: { cacheTtl: 0, cacheEverything: false }
   });
 
   const xml = await res.text();
 
-  // Hvis upstream feiler, gi feil videre
   if (!res.ok) {
-    return new Response(xml, {
-      status: res.status,
-      headers: {
-        "Content-Type": "text/plain; charset=utf-8",
-        "Cache-Control": "no-store",
-        "Access-Control-Allow-Origin": "*"
+    return new Response(
+      `Upstream feilet. Status ${res.status}\n\n${xml}`,
+      {
+        status: res.status,
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "*"
+        }
       }
-    });
+    );
   }
 
-  // Parse XML i Workers runtime
+  const nowIso = new Date().toISOString();
+
   let doc;
   try {
     doc = new DOMParser().parseFromString(xml, "application/xml");
-  } catch (e) {
+  } catch {
     return new Response(JSON.stringify({ updated: nowIso, error: "Kunne ikke parse XML" }), {
       status: 502,
       headers: {
@@ -42,14 +59,13 @@ export async function onRequest(context) {
     });
   }
 
-  // Hent ut situasjoner grovt og enkelt
   const situations = Array.from(doc.querySelectorAll("situationRecord"));
 
   const messages = situations
     .map((sr) => {
       const title =
-        sr.querySelector("situationRecordCreationReference")?.textContent?.trim() ||
-        sr.querySelector("probabilityOfOccurrence")?.textContent?.trim() ||
+        sr.querySelector("generalPublicComment comment")?.textContent?.trim() ||
+        sr.querySelector("comment comment")?.textContent?.trim() ||
         "Trafikkmelding";
 
       const text =
@@ -65,29 +81,17 @@ export async function onRequest(context) {
 
       return { title, text, severity };
     })
-    // Fjern tomme
     .filter((m) => (m.title && m.title.length) || (m.text && m.text.length))
-    // Kutt litt for stabil visning
     .slice(0, 50);
-
-  // Enkel tunnelstatus heuristikk
-  // Hvis noen meldinger nevner Byfjordtunnelen og inneholder stengt, closure, closed
-  const byfjordHit = messages.find((m) =>
-    (m.title + " " + m.text).toLowerCase().includes("byfjord")
-  );
-  const byfjordClosed = byfjordHit
-    ? /stengt|closed|closure|tunnel closed/i.test(byfjordHit.title + " " + byfjordHit.text)
-    : false;
 
   const payload = {
     updated: nowIso,
     stavanger: { messages },
     byfjord: {
-      status: byfjordClosed ? "STENGT" : "ÅPEN",
-      reason: byfjordHit ? byfjordHit.text || byfjordHit.title : "",
+      status: "ÅPEN",
+      reason: "",
       updated: nowIso,
       cameras: {
-        // Kamera må vi legge på i neste steg via GetCCTVSiteTable, men la feltene finnes
         retningByfjordtunnelen: { image: "", updated: nowIso },
         retningStavanger: { image: "", updated: nowIso }
       }
