@@ -5,7 +5,7 @@
  // --- Konfigurasjon ---
   const CONFIG = {
     // Vi bruker en proxy for å hente dataene fra Vegvesenet uten å bli blokkert
-    api: "https://api.allorigins.win/raw?url=" + encodeURIComponent("https://tavle.atlas.vegvesen.no/api/combined?region=stavanger"),
+    api: "/api/combined?region=stavanger", + encodeURIComponent("https://tavle.atlas.vegvesen.no/api/combined?region=stavanger"),
     refreshRate: 60000, // 60 sekunder
     clockRate: 1000
   };
