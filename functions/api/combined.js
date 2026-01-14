@@ -2,47 +2,48 @@ export async function onRequest(context) {
   const env = context.env || {};
   const user = env.DATEX_USER;
   const pass = env.DATEX_PASS;
-  const token = env.DATEX_TOKEN;
-
-  // 🔴 SETT DENNE
-  const subscriptionId = env.DATEX_SUBSCRIPTION_ID; // må settes i Pages settings
-
-  if (!subscriptionId) {
-    return new Response("Manglende DATEX_SUBSCRIPTION_ID", { status: 500 });
-  }
 
   const upstream =
-    "https://datex-server-get-v3-1.atlas.vegvesen.no/datexapi/GetSituation/pullsnapshotdata" +
-    "?subscriptionId=" + encodeURIComponent(subscriptionId);
+    "https://datex-server-get-v3-1.atlas.vegvesen.no/datexapi/GetSituation/pullsnapshotdata";
 
   const headers = {
-    "Accept": "application/xml",
-    "Content-Type": "application/xml",
-    "User-Agent": "Byfjordtunnelen/1.0 (Cloudflare Pages)"
+    // Ikke tving format. La serveren velge.
+    "User-Agent": "Byfjordtunnelen/1.0 (Cloudflare Pages)",
   };
 
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  } else if (user && pass) {
+  // NPRA spec: HTTP GET er sikret med Basic Authentication. :contentReference[oaicite:1]{index=1}
+  if (user && pass) {
     headers.Authorization = "Basic " + btoa(`${user}:${pass}`);
   }
 
   const res = await fetch(upstream, {
     method: "GET",
     headers,
-    cf: { cacheTtl: 0, cacheEverything: false }
+    cf: { cacheTtl: 0, cacheEverything: false },
   });
 
   const body = await res.text();
 
-  return new Response(body, {
-    status: res.status,
-    headers: {
-      "Content-Type": res.ok
-        ? "application/xml; charset=utf-8"
-        : "text/plain; charset=utf-8",
-      "Cache-Control": "no-store",
-      "Access-Control-Allow-Origin": "*"
+  // Returner alltid diagnostikk som JSON så du ser *hvorfor* det feiler
+  return new Response(
+    JSON.stringify(
+      {
+        upstream,
+        upstreamStatus: res.status,
+        upstreamContentType: res.headers.get("content-type"),
+        // NB: Ikke legg auth i output
+        body: body.slice(0, 5000), // kutt for å unngå gigantrespons
+      },
+      null,
+      2
+    ),
+    {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+        "Access-Control-Allow-Origin": "*",
+      },
     }
-  });
+  );
 }
