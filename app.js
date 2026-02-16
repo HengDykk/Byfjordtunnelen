@@ -3,18 +3,43 @@
 
   const CONFIG = {
     api: "/api/combined?region=stavanger",
+    weatherApi: "https://api.met.no/weatherapi/locationforecast/2.0/compact",
+    weatherLat: 59.0369,  // Byfjordtunnelen coordinates
+    weatherLon: 5.7331,
     refreshRate: 60000,
     clockRate: 1000,
     camRefreshRate: 30000,
+    weatherRefreshRate: 600000, // 10 minutes
     retryDelay: 5000,
     maxRetries: 3
+  };
+
+  const TUNNELS = {
+    byfjord: {
+      name: "Byfjordtunnelen",
+      keywords: ["byfjord"],
+      camLabels: {
+        nord: "Mot Byfjord / Rennesøy",
+        sor: "Mot Stavanger sentrum"
+      }
+    },
+    mastrafjord: {
+      name: "Mastrafjordtunnelen", 
+      keywords: ["mastrafjord", "mastra"],
+      camLabels: {
+        nord: "Mot Rennesøy",
+        sor: "Mot Stavanger"
+      }
+    }
   };
 
   const STATE = {
     retryCount: 0,
     lastSuccessfulUpdate: null,
     camsVisible: true,
-    isRefreshing: false
+    isRefreshing: false,
+    currentTunnel: "byfjord",
+    isFullscreen: false
   };
 
   const dom = {
@@ -27,6 +52,8 @@
     items: el("items"),
     cam1: el("cam1"),
     cam2: el("cam2"),
+    camLabel1: el("camLabel1"),
+    camLabel2: el("camLabel2"),
     camStamp1: el("camStamp1"),
     camStamp2: el("camStamp2"),
     camLoader1: el("camLoader1"),
@@ -39,7 +66,11 @@
     camToggleText: el("camToggleText"),
     travelTime: el("travelTime"),
     travelTimeText: el("travelTimeText"),
-    eventCount: el("eventCount")
+    eventCount: el("eventCount"),
+    weather: el("weather"),
+    weatherText: el("weatherText"),
+    fullscreenBtn: el("fullscreenBtn"),
+    fullscreenIcon: el("fullscreenIcon")
   };
 
   // Theme Management
@@ -100,6 +131,41 @@
       .replace(/>/g, "&gt;");
   }
 
+  // Weather fetching
+  async function loadWeather() {
+    try {
+      const response = await fetch(
+        `${CONFIG.weatherApi}?lat=${CONFIG.weatherLat}&lon=${CONFIG.weatherLon}`,
+        {
+          headers: {
+            'User-Agent': 'Byfjordtunnelen/2.0 (trafikkmeldinger.pages.dev)'
+          }
+        }
+      );
+
+      if (!response.ok) throw new Error(`Weather API ${response.status}`);
+
+      const data = await response.json();
+      const current = data.properties?.timeseries?.[0];
+      
+      if (current?.data?.instant?.details) {
+        const temp = current.data.instant.details.air_temperature;
+        if (dom.weatherText) {
+          dom.weatherText.textContent = `${Math.round(temp)}°C`;
+        }
+        if (dom.weather) {
+          dom.weather.style.display = "flex";
+        }
+      }
+    } catch (err) {
+      console.error("Weather fetch error:", err);
+      // Don't show weather if it fails
+      if (dom.weather) {
+        dom.weather.style.display = "none";
+      }
+    }
+  }
+
   // Camera Management
   function setCameraSources() {
     const bust = Date.now();
@@ -131,11 +197,29 @@
     }
   }
 
+  // Update camera labels based on selected tunnel
+  function updateCameraLabels() {
+    const tunnel = TUNNELS[STATE.currentTunnel];
+    if (tunnel && dom.camLabel1 && dom.camLabel2) {
+      dom.camLabel1.textContent = tunnel.camLabels.nord;
+      dom.camLabel2.textContent = tunnel.camLabels.sor;
+    }
+  }
+
   // Update Health Indicator
   function updateHealth(isHealthy, message) {
     if (dom.health) {
       dom.health.innerHTML = `<span class="healthDot ${isHealthy ? 'healthy' : 'unhealthy'}"></span>${message || 'System status: OK'}`;
     }
+  }
+
+  // Check if message is relevant to current tunnel
+  function isRelevantToTunnel(message, tunnelKey) {
+    const tunnel = TUNNELS[tunnelKey];
+    if (!tunnel) return false;
+
+    const text = `${message.title || ""} ${message.text || ""} ${message.where || ""}`.toLowerCase();
+    return tunnel.keywords.some(keyword => text.includes(keyword));
   }
 
   // Main Data Loading Function
@@ -173,7 +257,32 @@
       // Process tunnel status
       const by = data.byfjord || {};
       const events = data.stavanger?.messages || [];
-      const status = String(by.status || "UKJENT").toUpperCase();
+      
+      // Filter messages for current tunnel
+      const tunnelMessages = events.filter(msg => 
+        isRelevantToTunnel(msg, STATE.currentTunnel)
+      );
+
+      // Determine status based on current tunnel
+      let status = "ÅPEN";
+      let reason = "";
+      
+      if (tunnelMessages.length > 0) {
+        const tunnelMsg = tunnelMessages[0];
+        const txt = `${tunnelMsg.title} ${tunnelMsg.text}`.toLowerCase();
+        
+        if (/stengt|tunnel stengt|closed|closure/.test(txt)) {
+          status = "STENGT";
+        } else if (/kolonne|stans|omkjøring|lysregulering|dirigering|redusert/.test(txt)) {
+          status = "AVVIK";
+        }
+        
+        reason = tunnelMsg.text || tunnelMsg.title;
+      } else if (STATE.currentTunnel === "byfjord") {
+        // Fallback to general byfjord status
+        status = String(by.status || "ÅPEN").toUpperCase();
+        reason = by.reason || "";
+      }
 
       updateGlobalTheme(status);
 
@@ -184,7 +293,7 @@
       }
       
       if (dom.statusReason) {
-        dom.statusReason.textContent = by.reason || "Ingen spesielle merknader.";
+        dom.statusReason.textContent = reason || "Ingen spesielle merknader.";
       }
 
       if (dom.pill) {
@@ -194,10 +303,13 @@
           status === "AVVIK" ? "AVVIK" : "SJEKK STATUS";
       }
 
-      // Show travel time if available (mock for now)
+      // Show travel time if available
       if (status === "ÅPEN" && dom.travelTime) {
         dom.travelTime.style.display = "flex";
-        if (dom.travelTimeText) dom.travelTimeText.textContent = "~3 min";
+        if (dom.travelTimeText) {
+          const tunnelLength = STATE.currentTunnel === "byfjord" ? 3 : 2;
+          dom.travelTimeText.textContent = `~${tunnelLength} min`;
+        }
       } else if (dom.travelTime) {
         dom.travelTime.style.display = "none";
       }
@@ -213,7 +325,7 @@
       if (dom.camStamp1) dom.camStamp1.textContent = updatedStr;
       if (dom.camStamp2) dom.camStamp2.textContent = updatedStr;
 
-      // Update event count
+      // Update event count (all events, not just tunnel-specific)
       if (dom.eventCount) {
         const count = events.length;
         dom.eventCount.textContent = count > 0 
@@ -300,7 +412,6 @@
         
         updateHealth(false, "Ingen forbindelse til API");
         
-        // Reset retry count after some time
         setTimeout(() => { STATE.retryCount = 0; }, 30000);
       }
     } finally {
@@ -325,6 +436,27 @@
     }
   }
 
+  // Fullscreen Toggle
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().then(() => {
+        STATE.isFullscreen = true;
+        if (dom.fullscreenIcon) {
+          dom.fullscreenIcon.innerHTML = '<path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/>';
+        }
+      }).catch(err => {
+        console.error('Fullscreen error:', err);
+      });
+    } else {
+      document.exitFullscreen().then(() => {
+        STATE.isFullscreen = false;
+        if (dom.fullscreenIcon) {
+          dom.fullscreenIcon.innerHTML = '<path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>';
+        }
+      });
+    }
+  }
+
   // Camera Toggle
   function toggleCameras() {
     STATE.camsVisible = !STATE.camsVisible;
@@ -341,6 +473,26 @@
     }
   }
 
+  // Tunnel Selection
+  function selectTunnel(tunnelKey) {
+    STATE.currentTunnel = tunnelKey;
+    
+    // Update button states
+    document.querySelectorAll('.tunnelBtn').forEach(btn => {
+      if (btn.dataset.tunnel === tunnelKey) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+    
+    // Update camera labels
+    updateCameraLabels();
+    
+    // Reload data for new tunnel
+    load(true);
+  }
+
   // Event Listeners
   if (dom.refreshBtn) {
     dom.refreshBtn.addEventListener("click", () => {
@@ -353,6 +505,17 @@
     dom.toggleCams.addEventListener("click", toggleCameras);
   }
 
+  if (dom.fullscreenBtn) {
+    dom.fullscreenBtn.addEventListener("click", toggleFullscreen);
+  }
+
+  // Tunnel selector buttons
+  document.querySelectorAll('.tunnelBtn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      selectTunnel(btn.dataset.tunnel);
+    });
+  });
+
   // Keyboard shortcuts
   document.addEventListener("keydown", (e) => {
     if (e.key === "r" && !e.ctrlKey && !e.metaKey) {
@@ -363,6 +526,15 @@
       e.preventDefault();
       toggleCameras();
     }
+    if (e.key === "f" && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      toggleFullscreen();
+    }
+  });
+
+  // Listen for fullscreen changes
+  document.addEventListener('fullscreenchange', () => {
+    STATE.isFullscreen = !!document.fullscreenElement;
   });
 
   // Initialize
@@ -370,10 +542,14 @@
   setInterval(tick, CONFIG.clockRate);
 
   setCameraSources();
+  updateCameraLabels();
   setInterval(setCameraSources, CONFIG.camRefreshRate);
 
   load();
   setInterval(load, CONFIG.refreshRate);
+
+  loadWeather();
+  setInterval(loadWeather, CONFIG.weatherRefreshRate);
 
   // Update relative time every minute
   setInterval(() => {

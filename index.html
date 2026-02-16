@@ -6,11 +6,13 @@
   <meta name="color-scheme" content="dark" />
   <meta name="theme-color" content="#05070C" />
 
-  <title>Trafikkstatus — Stavanger Wallboard</title>
+  <title>Trafikkstatus — E39 Stavanger</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=DM+Sans:wght@400;500;700;900&display=swap" rel="stylesheet">
+  
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='%2300FF88'/></svg>">
   
   <link rel="preload" href="./styles.css" as="style" />
   <link rel="stylesheet" href="./styles.css" />
@@ -23,18 +25,29 @@
         <div class="hdot" id="headerDot" aria-hidden="true"></div>
         <div class="brandText">
           <div class="title">Trafikkstatus</div>
-          <div class="sub">Byfjordtunnelen • E39 Stavanger</div>
+          <div class="sub">E39 Stavanger-regionen</div>
         </div>
       </div>
 
       <div class="meta">
-        <div class="chip" id="clock">--:--</div>
+        <div class="chip weather" id="weather" style="display: none;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20 15.5c0 1.933-1.567 3.5-3.5 3.5H7c-2.761 0-5-2.239-5-5s2.239-5 5-5c0-2.761 2.239-5 5-5s5 2.239 5 5v.5c1.933 0 3.5 1.567 3.5 3.5z"/>
+          </svg>
+          <span id="weatherText">--°C</span>
+        </div>
+        <div class="chip" id="clock">--:--:--</div>
         <button class="chip chip-button" id="refreshBtn" aria-label="Oppdater data manuelt">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M14 8c0 3.314-2.686 6-6 6s-6-2.686-6-6 2.686-6 6-6c1.657 0 3.157.672 4.243 1.757L14 5.5"/>
             <path d="M14 2v3.5h-3.5"/>
           </svg>
           <span id="refreshText">Oppdater</span>
+        </button>
+        <button class="chip chip-button" id="fullscreenBtn" aria-label="Fullskjerm">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="fullscreenIcon">
+            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+          </svg>
         </button>
         <div class="chip" id="updated">Initialiserer...</div>
       </div>
@@ -44,6 +57,11 @@
       <section class="card hero" id="hero" aria-label="Tunnelstatus">
         <div class="heroTop">
           <div class="statusSection">
+            <div class="tunnelSelector">
+              <button class="tunnelBtn active" data-tunnel="byfjord">Byfjordtunnelen</button>
+              <button class="tunnelBtn" data-tunnel="mastrafjord">Mastrafjordtunnelen</button>
+            </div>
+
             <div class="kicker">Nåværende status</div>
 
             <div class="statusWrap">
@@ -76,7 +94,7 @@
                   <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
                   <circle cx="12" cy="13" r="4"/>
                 </svg>
-                <span>Mot Byfjord / Rennesøy</span>
+                <span id="camLabel1">Mot nord</span>
               </div>
               <span class="stamp" id="camStamp1">--:--</span>
             </div>
@@ -95,7 +113,7 @@
                   <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
                   <circle cx="12" cy="13" r="4"/>
                 </svg>
-                <span>Mot Stavanger sentrum</span>
+                <span id="camLabel2">Mot sør</span>
               </div>
               <span class="stamp" id="camStamp2">--:--</span>
             </div>
