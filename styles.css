@@ -238,10 +238,11 @@ body {
 
 /* Hero Section */
 .hero { 
-  padding: calc(24px * var(--scale)); 
+  padding: calc(20px * var(--scale)); 
   position: relative; 
-  justify-content: space-between;
-  overflow: visible; /* Allow pulse rings to show */
+  justify-content: flex-start;
+  overflow: visible;
+  gap: calc(16px * var(--scale));
 }
 
 .hero::after {
@@ -258,63 +259,125 @@ body {
 .app.good .hero::after { opacity: 0.25; }
 .app.bad .hero::after { opacity: 0.35; }
 
-.heroTop { 
-  display: flex; 
-  justify-content: space-between; 
-  align-items: flex-start;
-  gap: calc(20px * var(--scale));
-}
-
-.statusSection {
-  flex: 1;
-}
-
-/* Tunnel Selector */
-.tunnelSelector {
-  display: flex;
-  gap: 8px;
+/* Tunnel Overview Grid */
+.tunnelOverview {
+  width: 100%;
   margin-bottom: calc(12px * var(--scale));
 }
 
-.tunnelBtn {
-  padding: 6px 14px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.03);
+.tunnelOverviewTitle {
+  font-size: calc(18px * var(--scale));
+  font-weight: 700;
   color: var(--muted);
-  font-size: calc(14px * var(--scale));
-  font-weight: 600;
+  margin-bottom: calc(10px * var(--scale));
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.tunnelGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: calc(8px * var(--scale));
+}
+
+.tunnelCard {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: calc(10px * var(--scale));
   cursor: pointer;
   transition: all var(--transition-fast) ease;
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--scale));
   font-family: 'DM Sans', sans-serif;
+  position: relative;
+  overflow: hidden;
 }
 
-.tunnelBtn:hover {
+.tunnelCard:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--status-color);
+  transform: translateY(-2px);
+}
+
+.tunnelCard.active {
   background: rgba(255, 255, 255, 0.08);
   border-color: var(--status-color);
+  border-width: 2px;
 }
 
-.tunnelBtn.active {
-  background: var(--status-color);
-  color: #000;
-  border-color: var(--status-color);
+.tunnelCardStatus {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: all var(--transition-fast) ease;
+  position: relative;
 }
 
-.kicker { 
-  font-size: calc(14px * var(--scale)); 
-  color: var(--muted); 
-  text-transform: uppercase; 
-  letter-spacing: 2px; 
-  font-weight: 600; 
-  margin-bottom: calc(8px * var(--scale));
+.tunnelCardStatus::before {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  background: inherit;
+  opacity: 0.3;
+  animation: statusPulse 2s ease-in-out infinite;
+}
+
+@keyframes statusPulse {
+  0%, 100% { transform: scale(1); opacity: 0.3; }
+  50% { transform: scale(1.8); opacity: 0; }
+}
+
+.tunnelCardStatus.status-open {
+  background: var(--good);
+  box-shadow: 0 0 10px var(--good);
+}
+
+.tunnelCardStatus.status-closed {
+  background: var(--bad);
+  box-shadow: 0 0 10px var(--bad);
+}
+
+.tunnelCardStatus.status-warning {
+  background: var(--warn);
+  box-shadow: 0 0 10px var(--warn);
+}
+
+.tunnelCardName {
+  font-size: calc(14px * var(--scale));
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Tunnel Details */
+.tunnelDetails {
+  margin-bottom: calc(12px * var(--scale));
+}
+
+.tunnelDetailsHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: calc(12px * var(--scale));
+}
+
+.tunnelName {
+  font-size: calc(28px * var(--scale));
+  font-weight: 900;
+  color: var(--text);
 }
 
 .statusWrap { 
   display: flex; 
   align-items: center; 
-  gap: 24px; 
-  margin-top: 8px;
-  margin-bottom: 12px;
+  gap: 20px; 
+  margin: calc(10px * var(--scale)) 0;
 }
 
 /* Fixed indicator - prevent overflow */
@@ -394,27 +457,27 @@ body {
 }
 
 .reason { 
-  font-size: calc(22px * var(--scale)); 
+  font-size: calc(18px * var(--scale)); 
   color: var(--muted); 
-  max-width: 90%; 
-  line-height: 1.4; 
+  max-width: 100%; 
+  line-height: 1.3; 
+  margin-bottom: calc(12px * var(--scale));
 }
 
 .pillGroup {
   display: flex;
-  flex-direction: column;
   gap: 10px;
-  align-items: flex-end;
+  align-items: center;
 }
 
 .pill {
-  font-size: calc(24px * var(--scale)); 
+  font-size: calc(20px * var(--scale)); 
   font-weight: 800; 
-  padding: 10px 28px;
-  border-radius: 14px; 
+  padding: 8px 24px;
+  border-radius: 12px; 
   background: var(--status-color); 
   color: #000;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.3); 
+  box-shadow: 0 6px 24px rgba(0,0,0,0.3); 
   transition: all var(--transition-normal) ease;
   white-space: nowrap;
 }
@@ -432,18 +495,16 @@ body {
   font-family: 'JetBrains Mono', monospace;
 }
 
-/* Camera feeds - improved framing */
+/* Camera feeds - compact for space */
 .cams { 
   display: grid; 
   grid-template-columns: 1fr 1fr; 
-  gap: 14px; 
-  flex: 1; 
-  min-height: 0; 
-  margin-top: 18px; 
+  gap: 10px; 
+  max-height: 280px;
 }
 
 .cam { 
-  border-radius: 18px; 
+  border-radius: 14px; 
   overflow: hidden; 
   background: #000; 
   border: 1px solid var(--line); 
@@ -457,12 +518,12 @@ body {
 }
 
 .camHead { 
-  padding: 10px 16px; 
+  padding: 8px 12px; 
   background: rgba(0,0,0,0.9); 
   display: flex; 
   justify-content: space-between; 
   align-items: center;
-  font-size: calc(16px * var(--scale)); 
+  font-size: calc(13px * var(--scale)); 
   border-bottom: 1px solid var(--line);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
@@ -472,7 +533,7 @@ body {
 .camTitle {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   color: var(--text);
   font-weight: 600;
 }
@@ -481,24 +542,22 @@ body {
   font-family: 'JetBrains Mono', monospace;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
-  font-size: calc(13px * var(--scale));
+  font-size: calc(12px * var(--scale));
 }
 
 .camContainer {
   position: relative;
-  flex: 1;
+  height: 100%;
   background: #000;
-  min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-/* Better image framing - remove black bars */
 .cam img { 
   width: 100%; 
   height: 100%; 
-  object-fit: cover; /* Changed from contain to cover */
+  object-fit: cover;
   opacity: 0.92;
   transition: opacity var(--transition-fast) ease;
 }

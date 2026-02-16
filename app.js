@@ -4,31 +4,96 @@
   const CONFIG = {
     api: "/api/combined?region=stavanger",
     weatherApi: "https://api.met.no/weatherapi/locationforecast/2.0/compact",
-    weatherLat: 59.0369,  // Byfjordtunnelen coordinates
+    weatherLat: 59.0369,
     weatherLon: 5.7331,
     refreshRate: 60000,
     clockRate: 1000,
     camRefreshRate: 30000,
-    weatherRefreshRate: 600000, // 10 minutes
+    weatherRefreshRate: 600000,
     retryDelay: 5000,
     maxRetries: 3
   };
 
+  // Complete list of tunnels in Stavanger region that can be closed
   const TUNNELS = {
     byfjord: {
       name: "Byfjordtunnelen",
+      shortName: "Byfjord",
       keywords: ["byfjord"],
+      length: 5875,
       camLabels: {
         nord: "Mot Byfjord / Rennesøy",
         sor: "Mot Stavanger sentrum"
       }
     },
     mastrafjord: {
-      name: "Mastrafjordtunnelen", 
+      name: "Mastrafjordtunnelen",
+      shortName: "Mastrafjord",
       keywords: ["mastrafjord", "mastra"],
+      length: 4424,
       camLabels: {
         nord: "Mot Rennesøy",
         sor: "Mot Stavanger"
+      }
+    },
+    eiganes: {
+      name: "Eiganestunnelen",
+      shortName: "Eiganes",
+      keywords: ["eiganes"],
+      length: 3174,
+      camLabels: {
+        nord: "Mot nord",
+        sor: "Mot sør"
+      }
+    },
+    sotrasambandet: {
+      name: "Sotrasambandet",
+      shortName: "Sotra",
+      keywords: ["sotra", "sotrasambandet", "sotratunnelen"],
+      length: 0,
+      camLabels: {
+        nord: "Mot Sotra",
+        sor: "Mot Stavanger"
+      }
+    },
+    hundvagtunnelen: {
+      name: "Hundvågtunnelen",
+      shortName: "Hundvåg",
+      keywords: ["hundvåg", "hundvaag"],
+      length: 2100,
+      camLabels: {
+        nord: "Mot nord",
+        sor: "Mot sør"
+      }
+    },
+    ryfast: {
+      name: "Ryfylketunnelen (Ryfast)",
+      shortName: "Ryfast",
+      keywords: ["ryfast", "ryfylke"],
+      length: 14300,
+      camLabels: {
+        nord: "Mot Ryfylke",
+        sor: "Mot Stavanger"
+      }
+    },
+    solbakk: {
+      name: "Solbakktunnelen",
+      shortName: "Solbakk",
+      keywords: ["solbakk"],
+      length: 1350,
+      camLabels: {
+        nord: "Mot nord",
+        sor: "Mot sør"
+      }
+    },
+    storhaug: {
+      name: "Storhaugtunnelen",
+      shortName: "Storhaug",
+      keywords: ["storhaug"],
+      length: 1100,
+      camLabels: {
+        nord: "Mot nord",
+        sor: "Mot sør"
       }
     }
   };
@@ -39,7 +104,8 @@
     camsVisible: true,
     isRefreshing: false,
     currentTunnel: "byfjord",
-    isFullscreen: false
+    isFullscreen: false,
+    tunnelStatuses: {}
   };
 
   const dom = {
@@ -59,7 +125,6 @@
     camLoader1: el("camLoader1"),
     camLoader2: el("camLoader2"),
     health: el("health"),
-    healthDot: document.querySelector(".healthDot"),
     refreshBtn: el("refreshBtn"),
     refreshText: el("refreshText"),
     toggleCams: el("toggleCams"),
@@ -70,8 +135,15 @@
     weather: el("weather"),
     weatherText: el("weatherText"),
     fullscreenBtn: el("fullscreenBtn"),
-    fullscreenIcon: el("fullscreenIcon")
+    fullscreenIcon: el("fullscreenIcon"),
+    tunnelGrid: el("tunnelGrid"),
+    tunnelName: el("tunnelName")
   };
+
+  // Initialize tunnel statuses
+  Object.keys(TUNNELS).forEach(key => {
+    STATE.tunnelStatuses[key] = "ÅPEN";
+  });
 
   // Theme Management
   function updateGlobalTheme(status) {
@@ -159,7 +231,6 @@
       }
     } catch (err) {
       console.error("Weather fetch error:", err);
-      // Don't show weather if it fails
       if (dom.weather) {
         dom.weather.style.display = "none";
       }
@@ -197,7 +268,7 @@
     }
   }
 
-  // Update camera labels based on selected tunnel
+  // Update camera labels
   function updateCameraLabels() {
     const tunnel = TUNNELS[STATE.currentTunnel];
     if (tunnel && dom.camLabel1 && dom.camLabel2) {
@@ -213,13 +284,67 @@
     }
   }
 
-  // Check if message is relevant to current tunnel
+  // Render tunnel grid
+  function renderTunnelGrid() {
+    if (!dom.tunnelGrid) return;
+
+    const html = Object.entries(TUNNELS).map(([key, tunnel]) => {
+      const status = STATE.tunnelStatuses[key] || "ÅPEN";
+      const statusClass = 
+        status === "ÅPEN" ? "status-open" :
+        status === "STENGT" ? "status-closed" :
+        "status-warning";
+      
+      const isActive = key === STATE.currentTunnel;
+
+      return `
+        <button class="tunnelCard ${isActive ? 'active' : ''}" data-tunnel="${key}">
+          <div class="tunnelCardStatus ${statusClass}"></div>
+          <div class="tunnelCardName">${tunnel.shortName}</div>
+        </button>
+      `;
+    }).join("");
+
+    dom.tunnelGrid.innerHTML = html;
+
+    // Add click handlers
+    document.querySelectorAll('.tunnelCard').forEach(card => {
+      card.addEventListener('click', () => {
+        selectTunnel(card.dataset.tunnel);
+      });
+    });
+  }
+
+  // Check if message is relevant to tunnel
   function isRelevantToTunnel(message, tunnelKey) {
     const tunnel = TUNNELS[tunnelKey];
     if (!tunnel) return false;
 
     const text = `${message.title || ""} ${message.text || ""} ${message.where || ""}`.toLowerCase();
     return tunnel.keywords.some(keyword => text.includes(keyword));
+  }
+
+  // Determine tunnel status from messages
+  function determineTunnelStatus(messages, tunnelKey) {
+    const relevantMessages = messages.filter(msg => isRelevantToTunnel(msg, tunnelKey));
+    
+    if (relevantMessages.length === 0) return "ÅPEN";
+
+    for (const msg of relevantMessages) {
+      const txt = `${msg.title} ${msg.text}`.toLowerCase();
+      if (/stengt|tunnel stengt|closed|closure/.test(txt)) {
+        return "STENGT";
+      }
+    }
+
+    for (const msg of relevantMessages) {
+      const txt = `${msg.title} ${msg.text}`.toLowerCase();
+      if (/kolonne|stans|omkjøring|lysregulering|dirigering|redusert|kø|ulykke/.test(txt)) {
+        return "AVVIK";
+      }
+    }
+
+    return "ÅPEN";
   }
 
   // Main Data Loading Function
@@ -250,72 +375,61 @@
 
       const data = await response.json();
       
-      // Reset retry count on success
       STATE.retryCount = 0;
       STATE.lastSuccessfulUpdate = new Date();
 
-      // Process tunnel status
-      const by = data.byfjord || {};
       const events = data.stavanger?.messages || [];
-      
-      // Filter messages for current tunnel
-      const tunnelMessages = events.filter(msg => 
+
+      // Update all tunnel statuses
+      Object.keys(TUNNELS).forEach(tunnelKey => {
+        STATE.tunnelStatuses[tunnelKey] = determineTunnelStatus(events, tunnelKey);
+      });
+
+      // Render tunnel grid with updated statuses
+      renderTunnelGrid();
+
+      // Get current tunnel status
+      const currentStatus = STATE.tunnelStatuses[STATE.currentTunnel];
+      const currentTunnelMessages = events.filter(msg => 
         isRelevantToTunnel(msg, STATE.currentTunnel)
       );
 
-      // Determine status based on current tunnel
-      let status = "ÅPEN";
-      let reason = "";
-      
-      if (tunnelMessages.length > 0) {
-        const tunnelMsg = tunnelMessages[0];
-        const txt = `${tunnelMsg.title} ${tunnelMsg.text}`.toLowerCase();
-        
-        if (/stengt|tunnel stengt|closed|closure/.test(txt)) {
-          status = "STENGT";
-        } else if (/kolonne|stans|omkjøring|lysregulering|dirigering|redusert/.test(txt)) {
-          status = "AVVIK";
-        }
-        
-        reason = tunnelMsg.text || tunnelMsg.title;
-      } else if (STATE.currentTunnel === "byfjord") {
-        // Fallback to general byfjord status
-        status = String(by.status || "ÅPEN").toUpperCase();
-        reason = by.reason || "";
-      }
-
-      updateGlobalTheme(status);
+      updateGlobalTheme(currentStatus);
 
       if (dom.statusText) {
-        dom.statusText.textContent = status;
+        dom.statusText.textContent = currentStatus;
         dom.statusText.classList.add("statusUpdate");
         setTimeout(() => dom.statusText.classList.remove("statusUpdate"), 600);
       }
       
       if (dom.statusReason) {
-        dom.statusReason.textContent = reason || "Ingen spesielle merknader.";
+        const reason = currentTunnelMessages.length > 0 
+          ? (currentTunnelMessages[0].text || currentTunnelMessages[0].title)
+          : "Ingen spesielle merknader.";
+        dom.statusReason.textContent = reason;
       }
 
       if (dom.pill) {
         dom.pill.textContent =
-          status === "ÅPEN" ? "FRI FLYT" :
-          status === "STENGT" ? "STENGT" :
-          status === "AVVIK" ? "AVVIK" : "SJEKK STATUS";
+          currentStatus === "ÅPEN" ? "FRI FLYT" :
+          currentStatus === "STENGT" ? "STENGT" :
+          currentStatus === "AVVIK" ? "AVVIK" : "SJEKK STATUS";
       }
 
-      // Show travel time if available
-      if (status === "ÅPEN" && dom.travelTime) {
+      // Show travel time
+      if (currentStatus === "ÅPEN" && dom.travelTime) {
         dom.travelTime.style.display = "flex";
+        const tunnel = TUNNELS[STATE.currentTunnel];
+        const minutes = Math.ceil(tunnel.length / 1000);
         if (dom.travelTimeText) {
-          const tunnelLength = STATE.currentTunnel === "byfjord" ? 3 : 2;
-          dom.travelTimeText.textContent = `~${tunnelLength} min`;
+          dom.travelTimeText.textContent = `~${minutes} min`;
         }
       } else if (dom.travelTime) {
         dom.travelTime.style.display = "none";
       }
 
-      const updatedStr = fmtTime(data.updated || by.updated);
-      const relativeStr = fmtRelativeTime(data.updated || by.updated);
+      const updatedStr = fmtTime(data.updated);
+      const relativeStr = fmtRelativeTime(data.updated);
       
       if (dom.updated) {
         dom.updated.textContent = `Oppdatert: ${updatedStr}`;
@@ -325,7 +439,7 @@
       if (dom.camStamp1) dom.camStamp1.textContent = updatedStr;
       if (dom.camStamp2) dom.camStamp2.textContent = updatedStr;
 
-      // Update event count (all events, not just tunnel-specific)
+      // Update event count
       if (dom.eventCount) {
         const count = events.length;
         dom.eventCount.textContent = count > 0 
@@ -333,7 +447,7 @@
           : 'Ingen hendelser';
       }
 
-      // Process traffic events
+      // Process ALL traffic events (not just tunnel-specific)
       if (dom.items) {
         if (!events.length) {
           dom.items.innerHTML = `
@@ -390,7 +504,6 @@
 
     } catch (err) {
       STATE.retryCount++;
-      
       console.error("Data fetch error:", err);
       
       const isTimeout = err.name === "AbortError";
@@ -411,7 +524,6 @@
         if (dom.pill) dom.pill.textContent = "OFFLINE";
         
         updateHealth(false, "Ingen forbindelse til API");
-        
         setTimeout(() => { STATE.retryCount = 0; }, 30000);
       }
     } finally {
@@ -477,19 +589,13 @@
   function selectTunnel(tunnelKey) {
     STATE.currentTunnel = tunnelKey;
     
-    // Update button states
-    document.querySelectorAll('.tunnelBtn').forEach(btn => {
-      if (btn.dataset.tunnel === tunnelKey) {
-        btn.classList.add('active');
-      } else {
-        btn.classList.remove('active');
-      }
-    });
+    const tunnel = TUNNELS[tunnelKey];
+    if (tunnel && dom.tunnelName) {
+      dom.tunnelName.textContent = tunnel.name;
+    }
     
-    // Update camera labels
     updateCameraLabels();
-    
-    // Reload data for new tunnel
+    renderTunnelGrid();
     load(true);
   }
 
@@ -509,13 +615,6 @@
     dom.fullscreenBtn.addEventListener("click", toggleFullscreen);
   }
 
-  // Tunnel selector buttons
-  document.querySelectorAll('.tunnelBtn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      selectTunnel(btn.dataset.tunnel);
-    });
-  });
-
   // Keyboard shortcuts
   document.addEventListener("keydown", (e) => {
     if (e.key === "r" && !e.ctrlKey && !e.metaKey) {
@@ -532,7 +631,6 @@
     }
   });
 
-  // Listen for fullscreen changes
   document.addEventListener('fullscreenchange', () => {
     STATE.isFullscreen = !!document.fullscreenElement;
   });
@@ -541,6 +639,7 @@
   tick();
   setInterval(tick, CONFIG.clockRate);
 
+  renderTunnelGrid();
   setCameraSources();
   updateCameraLabels();
   setInterval(setCameraSources, CONFIG.camRefreshRate);
@@ -551,7 +650,6 @@
   loadWeather();
   setInterval(loadWeather, CONFIG.weatherRefreshRate);
 
-  // Update relative time every minute
   setInterval(() => {
     if (STATE.lastSuccessfulUpdate && dom.updated) {
       const relativeStr = fmtRelativeTime(STATE.lastSuccessfulUpdate);
@@ -559,17 +657,13 @@
     }
   }, 60000);
 
-  // Optimize for display size (1920x1080 detection)
+  // Optimize for display size
   function optimizeForDisplay() {
     const width = window.innerWidth;
-    const height = window.innerHeight;
     
-    // Perfect for 1920x1080 Full HD displays
     if (width >= 1920 && width < 2560) {
       document.documentElement.style.setProperty('--detected-display', '1080p');
-    } 
-    // UHD/4K displays
-    else if (width >= 2560) {
+    } else if (width >= 2560) {
       document.documentElement.style.setProperty('--detected-display', 'uhd');
     }
   }

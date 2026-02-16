@@ -55,42 +55,46 @@
 
     <main class="grid">
       <section class="card hero" id="hero" aria-label="Tunnelstatus">
-        <div class="heroTop">
-          <div class="statusSection">
-            <div class="tunnelSelector">
-              <button class="tunnelBtn active" data-tunnel="byfjord">Byfjordtunnelen</button>
-              <button class="tunnelBtn" data-tunnel="mastrafjord">Mastrafjordtunnelen</button>
-            </div>
-
-            <div class="kicker">Nåværende status</div>
-
-            <div class="statusWrap">
-              <div class="indicator" id="mainIndicator" aria-hidden="true">
-                <div class="indicatorCore"></div>
-              </div>
-              <h1 class="status" id="statusText">Henter...</h1>
-            </div>
-
-            <div class="reason" id="statusReason">Synkroniserer med Statens Vegvesen. Vennligst vent.</div>
-          </div>
-
-          <div class="pillGroup">
-            <div class="pill" id="pill">Venter</div>
-            <div class="travelTime" id="travelTime" style="display: none;">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/>
-                <path d="M12 6v6l4 2"/>
-              </svg>
-              <span id="travelTimeText">~3 min</span>
-            </div>
+        <!-- Tunnel Status Overview -->
+        <div class="tunnelOverview">
+          <h3 class="tunnelOverviewTitle">Tunneler i Stavanger</h3>
+          <div class="tunnelGrid" id="tunnelGrid">
+            <!-- Populated by JavaScript -->
           </div>
         </div>
 
+        <!-- Selected Tunnel Details -->
+        <div class="tunnelDetails">
+          <div class="tunnelDetailsHeader">
+            <h2 class="tunnelName" id="tunnelName">Byfjordtunnelen</h2>
+            <div class="pillGroup">
+              <div class="pill" id="pill">Venter</div>
+              <div class="travelTime" id="travelTime" style="display: none;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M12 6v6l4 2"/>
+                </svg>
+                <span id="travelTimeText">~3 min</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="statusWrap">
+            <div class="indicator" id="mainIndicator" aria-hidden="true">
+              <div class="indicatorCore"></div>
+            </div>
+            <h1 class="status" id="statusText">Henter...</h1>
+          </div>
+
+          <div class="reason" id="statusReason">Synkroniserer med Statens Vegvesen. Vennligst vent.</div>
+        </div>
+
+        <!-- Compact Cameras -->
         <div class="cams" aria-label="Live kamerafeed">
           <figure class="cam">
             <div class="camHead">
               <div class="camTitle">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
                   <circle cx="12" cy="13" r="4"/>
                 </svg>
@@ -109,7 +113,7 @@
           <figure class="cam">
             <div class="camHead">
               <div class="camTitle">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
                   <circle cx="12" cy="13" r="4"/>
                 </svg>
