@@ -75,7 +75,19 @@ const stavangerMustHave = [
   "finnøy",
   "mosterøy",
   "åmøy",
-  "vassøy"
+  "vassøy",
+
+  // Tunneler vi viser status for
+  "mastrafjord",
+  "mastra",
+  "ryfast",
+  "ryfylke",
+  "ryfylketunnelen",
+  "solbakk",
+  "solbakktunnelen",
+  "eiganestunnelen",
+  "hundvågtunnelen",
+  "storhaugtunnelen"
 ];
 
 // Ekskluder nabokommuner som ofte dukker opp i tekst
