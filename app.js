@@ -103,14 +103,32 @@
     const relevantMessages = messages.filter(msg => isRelevantToTunnel(msg, tunnelKey));
     if (relevantMessages.length === 0) return "ÅPEN";
     
+    // Check severity first (most reliable indicator)
     for (const msg of relevantMessages) {
-      const txt = `${msg.title} ${msg.text}`.toLowerCase();
-      if (/stengt|tunnel stengt|closed|closure/.test(txt)) return "STENGT";
+      const sev = String(msg.severity || "").toUpperCase();
+      if (sev === "HIGHEST" || sev === "HIGH") {
+        const txt = `${msg.title} ${msg.text}`.toLowerCase();
+        // STENGT patterns (based on DATEX II spec)
+        if (/stengt|steng[te]|closed?|closure|sperr[et]|blocked?|impassable/.test(txt)) {
+          return "STENGT";
+        }
+      }
     }
     
+    // Check for closure/severe disruption patterns
     for (const msg of relevantMessages) {
       const txt = `${msg.title} ${msg.text}`.toLowerCase();
-      if (/kolonne|stans|omkjøring|lysregulering|dirigering|redusert|kø|ulykke/.test(txt)) return "AVVIK";
+      if (/stengt|steng[te]|closed?|closure|sperr[et]|blocked?|impassable|ikke farbar/.test(txt)) {
+        return "STENGT";
+      }
+    }
+    
+    // Check for disruptions/warnings (AVVIK)
+    for (const msg of relevantMessages) {
+      const txt = `${msg.title} ${msg.text}`.toLowerCase();
+      if (/kolonne|stans|omkjøring|lysregulering|dirigering|redusert|kø|ulykke|accident|delay|trafikkulykke|framkommelighet/.test(txt)) {
+        return "AVVIK";
+      }
     }
     
     return "ÅPEN";
@@ -175,6 +193,20 @@
 
       Object.keys(TUNNELS).forEach(tunnelKey => {
         STATE.tunnelStatuses[tunnelKey] = determineTunnelStatus(STATE.allMessages, tunnelKey);
+      });
+
+      // DEBUG: Log tunnel statuses to console
+      console.log("=== TUNNEL STATUSER ===");
+      Object.entries(STATE.tunnelStatuses).forEach(([key, status]) => {
+        const tunnel = TUNNELS[key];
+        const messages = STATE.allMessages.filter(msg => isRelevantToTunnel(msg, key));
+        console.log(`${tunnel.name}: ${status}`);
+        if (messages.length > 0) {
+          messages.forEach(msg => {
+            console.log(`  - ${msg.title}: ${msg.text}`);
+            console.log(`    Severity: ${msg.severity}`);
+          });
+        }
       });
 
       renderTunnelsGrid();
