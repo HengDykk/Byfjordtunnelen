@@ -6,8 +6,12 @@
   <meta name="color-scheme" content="dark" />
   <meta name="theme-color" content="#05070C" />
 
-  <title>Trafikkstatus – Stavanger Wallboard</title>
+  <title>Trafikkstatus — Stavanger Wallboard</title>
 
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=DM+Sans:wght@400;500;700;900&display=swap" rel="stylesheet">
+  
   <link rel="preload" href="./styles.css" as="style" />
   <link rel="stylesheet" href="./styles.css" />
 </head>
@@ -25,6 +29,13 @@
 
       <div class="meta">
         <div class="chip" id="clock">--:--</div>
+        <button class="chip chip-button" id="refreshBtn" aria-label="Oppdater data manuelt">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 8c0 3.314-2.686 6-6 6s-6-2.686-6-6 2.686-6 6-6c1.657 0 3.157.672 4.243 1.757L14 5.5"/>
+            <path d="M14 2v3.5h-3.5"/>
+          </svg>
+          <span id="refreshText">Oppdater</span>
+        </button>
         <div class="chip" id="updated">Initialiserer...</div>
       </div>
     </header>
@@ -32,35 +43,68 @@
     <main class="grid">
       <section class="card hero" id="hero" aria-label="Tunnelstatus">
         <div class="heroTop">
-          <div>
+          <div class="statusSection">
             <div class="kicker">Nåværende status</div>
 
             <div class="statusWrap">
-              <div class="indicator" id="mainIndicator" aria-hidden="true"></div>
+              <div class="indicator" id="mainIndicator" aria-hidden="true">
+                <div class="indicatorCore"></div>
+              </div>
               <h1 class="status" id="statusText">Henter...</h1>
             </div>
 
             <div class="reason" id="statusReason">Synkroniserer med Statens Vegvesen. Vennligst vent.</div>
           </div>
 
-          <div class="pill" id="pill">Venter</div>
+          <div class="pillGroup">
+            <div class="pill" id="pill">Venter</div>
+            <div class="travelTime" id="travelTime" style="display: none;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M12 6v6l4 2"/>
+              </svg>
+              <span id="travelTimeText">~3 min</span>
+            </div>
+          </div>
         </div>
 
         <div class="cams" aria-label="Live kamerafeed">
           <figure class="cam">
             <div class="camHead">
-              <span>Mot Byfjord / Rennesøy</span>
+              <div class="camTitle">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                  <circle cx="12" cy="13" r="4"/>
+                </svg>
+                <span>Mot Byfjord / Rennesøy</span>
+              </div>
               <span class="stamp" id="camStamp1">--:--</span>
             </div>
-            <img id="cam1" alt="Kamera Nord" loading="eager" />
+            <div class="camContainer">
+              <img id="cam1" alt="Kamera Nord" loading="eager" />
+              <div class="camLoader" id="camLoader1">
+                <div class="spinner"></div>
+              </div>
+            </div>
           </figure>
 
           <figure class="cam">
             <div class="camHead">
-              <span>Mot Stavanger sentrum</span>
+              <div class="camTitle">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                  <circle cx="12" cy="13" r="4"/>
+                </svg>
+                <span>Mot Stavanger sentrum</span>
+              </div>
               <span class="stamp" id="camStamp2">--:--</span>
             </div>
-            <img id="cam2" alt="Kamera Sør" loading="eager" />
+            <div class="camContainer">
+              <img id="cam2" alt="Kamera Sør" loading="eager" />
+              <div class="camLoader" id="camLoader2">
+                <div class="spinner"></div>
+              </div>
+            </div>
           </figure>
         </div>
       </section>
@@ -68,17 +112,36 @@
       <section class="card list" aria-label="Trafikkmeldinger">
         <div class="listHead">
           <h2 class="h2">Andre hendelser</h2>
-          <div class="hint">Stavanger-regionen</div>
+          <div class="hint" id="eventCount">Stavanger-regionen</div>
         </div>
-        <div class="items" id="items">
-          <div class="skeleton">Laster trafikkmeldinger...</div>
+        <div class="itemsWrapper">
+          <div class="items" id="items">
+            <div class="skeleton">
+              <div class="skeletonPulse"></div>
+              Laster trafikkmeldinger...
+            </div>
+          </div>
         </div>
       </section>
     </main>
 
     <footer class="foot">
-      <div class="note">Kilde: Statens Vegvesen (DATEX II)</div>
-      <div class="note" id="health">System status: OK</div>
+      <div class="footLeft">
+        <div class="note">Kilde: Statens Vegvesen (DATEX II)</div>
+        <div class="note" id="health">
+          <span class="healthDot"></span>
+          System status: OK
+        </div>
+      </div>
+      <div class="footRight">
+        <button class="footButton" id="toggleCams" aria-label="Skjul/vis kameraer">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+          <span id="camToggleText">Skjul kameraer</span>
+        </button>
+      </div>
     </footer>
   </div>
 
