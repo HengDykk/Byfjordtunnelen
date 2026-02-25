@@ -70,6 +70,7 @@
     }
   }
 
+
   function readTunnelHistory() {
     try {
       const raw = localStorage.getItem(CONFIG.tunnelHistoryCacheKey);
@@ -109,6 +110,7 @@
   function esc(s) {
     return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
+
 
   function isClosureMessage(msg) {
     const txt = `${msg?.title || ""} ${msg?.text || ""}`.toLowerCase();
@@ -200,47 +202,21 @@
       .sort((a, b) => new Date(b.time || 0) - new Date(a.time || 0));
     if (relevantMessages.length === 0) return "ÅPEN";
 
-    // If latest relevant message explicitly says the situation is resolved/open, treat tunnel as open.
-    const latestText = `${relevantMessages[0].title || ""} ${relevantMessages[0].text || ""}`.toLowerCase();
-    if (/åpen igjen|åpnet|åpen for trafikk|normal trafikk|ferdig ryddet|gjenåpnet|reopened/.test(latestText)) {
-      return "ÅPEN";
-    }
-
-    // DATEX 3.1 structured fields should be the primary source for status.
-    let hasMediumOrHigherSeverity = false;
-    for (const msg of relevantMessages) {
-      const constriction = String(msg.trafficConstrictionType || "").toLowerCase();
-      const management = String(msg.roadManagementType || "").toLowerCase();
-      const sev = String(msg.severity || "").toLowerCase();
-      if (["highest", "high", "medium"].includes(sev)) hasMediumOrHigherSeverity = true;
-      if (["roadblocked", "carriagewayblocked", "lanesblocked"].includes(constriction)) return "STENGT";
-      if (["roadpartiallyobstructed", "carriagewaypartiallyobstructed", "lanespartiallyobstructed"].includes(constriction)) return "AVVIK";
-      if (/(roadclosed|carriagewayclosed|lanesclosed|tunnelclosed|closed)/.test(management)) return "STENGT";
-      if (/(alternatingcontraflow|intermittentclosures|contraflow|laneclosure)/.test(management)) return "AVVIK";
-    }
-
-    // If DATEX says severity is none/low and there are no structured restrictions,
-    // keep the tunnel open even if text still mentions an earlier incident.
-    if (!hasMediumOrHigherSeverity) return "ÅPEN";
-    
     // Check severity first (most reliable indicator)
     for (const msg of relevantMessages) {
       const sev = String(msg.severity || "").toUpperCase();
-      if (sev === "HIGHEST" || sev === "HIGH") {
-        // STENGT patterns (based on DATEX II spec)
-        if (isClosureMessage(msg)) {
-          return "STENGT";
-        }
+      if ((sev === "HIGHEST" || sev === "HIGH") && isClosureMessage(msg)) {
+        return "STENGT";
       }
     }
-    
+
     // Check for closure/severe disruption patterns
     for (const msg of relevantMessages) {
       if (isClosureMessage(msg)) {
         return "STENGT";
       }
     }
-    
+
     // Check for disruptions/warnings (AVVIK)
     for (const msg of relevantMessages) {
       const txt = `${msg.title} ${msg.text}`.toLowerCase();
@@ -248,16 +224,8 @@
         return "AVVIK";
       }
     }
-    
-    return "ÅPEN";
-  }
 
-  function rebuildTunnelMessageIndex(messages) {
-    const next = {};
-    for (const tunnelKey of Object.keys(TUNNELS)) {
-      next[tunnelKey] = messages.filter((msg) => isRelevantToTunnel(msg, tunnelKey));
-    }
-    STATE.messagesByTunnel = next;
+    return "ÅPEN";
   }
 
   function updateTunnelClosureHistory(defaultTimeIso) {
@@ -278,6 +246,14 @@
 
     STATE.lastClosedAtByTunnel = nextHistory;
     writeTunnelHistory(nextHistory);
+  }
+
+  function rebuildTunnelMessageIndex(messages) {
+    const next = {};
+    for (const tunnelKey of Object.keys(TUNNELS)) {
+      next[tunnelKey] = messages.filter((msg) => isRelevantToTunnel(msg, tunnelKey));
+    }
+    STATE.messagesByTunnel = next;
   }
 
   function renderTunnelsGrid() {
@@ -301,7 +277,7 @@
       const lengthText = tunnel.length > 0 ? `${(tunnel.length/1000).toFixed(1)} km` : "";
       const lastClosedIso = STATE.lastClosedAtByTunnel[key];
       const lastClosedText = lastClosedIso ? `Stengt sist: ${fmtClosedTime(lastClosedIso)}` : "Sist stengt: Ikke registrert";
-      
+
       return `
         <div class="tunnelItem ${statusClass}">
           <div class="tunnelItemHeader">
@@ -328,7 +304,7 @@
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), CONFIG.apiTimeoutMs);
-      const response = await fetch(CONFIG.api, { signal: controller.signal });
+      const response = await fetch(CONFIG.api, { cache: "no-store", signal: controller.signal });
       clearTimeout(timeoutId);
 
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -356,7 +332,12 @@
       Object.keys(TUNNELS).forEach(tunnelKey => {
         STATE.tunnelStatuses[tunnelKey] = determineTunnelStatus(STATE.allMessages, tunnelKey);
       });
-      updateTunnelClosureHistory(data.updated);
+      if (data.tunnelHistory && typeof data.tunnelHistory === "object") {
+        STATE.lastClosedAtByTunnel = { ...data.tunnelHistory };
+        writeTunnelHistory(STATE.lastClosedAtByTunnel);
+      } else {
+        updateTunnelClosureHistory(data.updated);
+      }
 
       renderTunnelsGrid();
       updateGlobalTheme();

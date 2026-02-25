@@ -1,5 +1,29 @@
 // functions/api/combined.js
 
+const MANUAL_TUNNEL_HISTORY_SEED = {
+  // Midlertidig manuell seed, brukes kun hvis vi mangler sentral historikk.
+  // Oppdater disse datoene ved behov.
+  byfjord: "2026-02-25T14:45:00+01:00",
+  mastrafjord: "",
+  eiganes: "",
+  hundvag: "",
+  ryfast: "",
+  sotra: "",
+  solbakk: "",
+  storhaug: "",
+};
+
+function normalizeHistorySeed(seed) {
+  const out = {};
+  for (const [key, value] of Object.entries(seed || {})) {
+    if (!value) continue;
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) continue;
+    out[key] = d.toISOString();
+  }
+  return out;
+}
+
 export async function onRequest(context) {
   const env = context.env || {};
   const user = env.DATEX_USER;
@@ -13,6 +37,9 @@ export async function onRequest(context) {
   const cacheKey = new Request(new URL(context.request.url).toString(), {
     method: "GET",
   });
+  const historyCacheKey = new Request("https://trafikkmeldinger.internal/tunnel-history.json", {
+    method: "GET",
+  });
 
   const headers = {
     "User-Agent": "Byfjordtunnelen/1.0 (Cloudflare Pages)",
@@ -22,7 +49,7 @@ export async function onRequest(context) {
     headers.Authorization = "Basic " + btoa(`${user}:${pass}`);
   }
 
-  const buildPayload = (messagesClean) => {
+  const buildPayload = (messagesClean, previousHistory = {}, seedHistory = {}) => {
     // Strengt kommune filter: krev lokal stedsreferanse, ikke vegnummer.
     // Ikke ha E39 her, den ødelegger alt.
     const stavangerMustHave = [
@@ -86,13 +113,10 @@ export async function onRequest(context) {
       "ryfylketunnelen",
       "solbakk",
       "solbakktunnelen",
-      "finnøy",
-      "finnøytunnelen",
-      "finnfast",
-      "talgje",
-      "talgjetunnelen",
       "storhaug",
       "storhaugtunnelen",
+      "sotra",
+      "sotrasambandet",
     ];
 
     function isStavanger(m) {
@@ -111,6 +135,23 @@ export async function onRequest(context) {
 
       return true;
     }
+
+
+    function isClosureMessage(m) {
+      const txt = `${m.title || ""} ${m.text || ""}`.toLowerCase();
+      return /stengt|steng[te]|closed?|closure|sperr[et]|blocked?|impassable|ikke farbar/.test(txt);
+    }
+
+    const tunnelKeywords = {
+      byfjord: ["byfjord", "byfjordtunnelen"],
+      mastrafjord: ["mastrafjord", "mastrafjordtunnelen", "mastra"],
+      eiganes: ["eiganes", "eiganestunnelen"],
+      hundvag: ["hundvåg", "hundvaag", "hundvågtunnelen"],
+      ryfast: ["ryfast", "ryfylke", "ryfylketunnelen"],
+      sotra: ["sotra", "sotrasambandet"],
+      solbakk: ["solbakk", "solbakktunnelen"],
+      storhaug: ["storhaug", "storhaugtunnelen"],
+    };
 
     function isActiveNow(m) {
       const now = Date.now();
@@ -135,6 +176,22 @@ export async function onRequest(context) {
 
     const nowIso = new Date().toISOString();
 
+    const tunnelHistory = { ...seedHistory, ...previousHistory };
+    for (const [tunnelKey, keywords] of Object.entries(tunnelKeywords)) {
+      const latestClosure = localOnly
+        .filter((m) => {
+          const txt = `${m.title || ""} ${m.text || ""} ${m.where || ""}`.toLowerCase();
+          return keywords.some((keyword) => txt.includes(keyword)) && isClosureMessage(m);
+        })
+        .map((m) => m.time || nowIso)
+        .filter(Boolean)
+        .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
+
+      if (latestClosure) {
+        tunnelHistory[tunnelKey] = latestClosure;
+      }
+    }
+
     // Byfjord status heuristikk
     const byfjordMsg = localOnly.find((m) => `${m.title} ${m.text} ${m.where}`.toLowerCase().includes("byfjord"));
     const byTxt = byfjordMsg ? `${byfjordMsg.title} ${byfjordMsg.text} ${byfjordMsg.where}`.toLowerCase() : "";
@@ -155,22 +212,14 @@ export async function onRequest(context) {
           retningStavanger: { image: "", updated: nowIso },
         },
       },
+      tunnelHistory,
     };
   };
 
   const cached = await cache.match(cacheKey);
-
-  if (!user || !pass) {
-    return json(
-      {
-        updated: new Date().toISOString(),
-        error: "Missing DATEX credentials",
-        message:
-          "DATEX_USER and DATEX_PASS must be set in Cloudflare Pages environment variables.",
-      },
-      503
-    );
-  }
+  const historyCached = await cache.match(historyCacheKey);
+  const previousHistory = historyCached ? await historyCached.clone().json().catch(() => ({})) : {};
+  const seedHistory = normalizeHistorySeed(MANUAL_TUNNEL_HISTORY_SEED);
 
   try {
     const controller = new AbortController();
@@ -193,7 +242,7 @@ export async function onRequest(context) {
       if (cached) {
         const payload = await cached.json();
         return json(
-          { ...payload, source: "stale-cache", stale: true, staleReason: `Upstream ${res.status}` },
+          { ...payload, tunnelHistory: payload.tunnelHistory || previousHistory || seedHistory || {}, source: "stale-cache", stale: true, staleReason: `Upstream ${res.status}` },
           200,
           "public, max-age=10, s-maxage=20, stale-while-revalidate=120"
         );
@@ -222,13 +271,24 @@ export async function onRequest(context) {
       messagesClean.push(m);
     }
 
-    const payload = { ...buildPayload(messagesClean), source: "live", stale: false };
+    const payload = { ...buildPayload(messagesClean, previousHistory || {}, seedHistory), source: "live", stale: false };
     const response = json(payload, 200, "public, max-age=15, s-maxage=30, stale-while-revalidate=120");
 
+    const historyResponse = new Response(JSON.stringify(payload.tunnelHistory || {}), {
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "public, max-age=300, s-maxage=300",
+      },
+    });
+
     if (context.waitUntil) {
-      context.waitUntil(cache.put(cacheKey, response.clone()));
+      context.waitUntil(Promise.all([
+        cache.put(cacheKey, response.clone()),
+        cache.put(historyCacheKey, historyResponse),
+      ]));
     } else {
       await cache.put(cacheKey, response.clone());
+      await cache.put(historyCacheKey, historyResponse);
     }
 
     return response;
@@ -238,6 +298,7 @@ export async function onRequest(context) {
       return json(
         {
           ...payload,
+          tunnelHistory: payload.tunnelHistory || previousHistory || seedHistory || {},
           source: "stale-cache",
           stale: true,
           staleReason: String(e && e.name ? e.name : "upstream-error"),
