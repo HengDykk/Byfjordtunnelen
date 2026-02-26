@@ -8,11 +8,21 @@ const MANUAL_TUNNEL_HISTORY_SEED = {
   eiganes: "",
   hundvag: "",
   ryfast: "",
-  sotra: "",
-  solbakk: "",
+  finnoy: "",
+  talgje: "",
   storhaug: "",
 };
 
+const TUNNEL_REGISTRY = {
+  byfjord: { id: "10-8383248394a8c41b", name: "Byfjordtunnelen", matchTerms: ["byfjordtunnelen", "byfjord"] },
+  mastrafjord: { id: "10-31b9ef1302194439", name: "Mastrafjordtunnelen", matchTerms: ["mastrafjordtunnelen", "mastrafjord"] },
+  eiganes: { id: "10-3e9b280fc15f0540", name: "Eiganestunnelen", matchTerms: ["eiganestunnelen"] },
+  hundvag: { id: "10-746700d70a0dd7cd", name: "Hundvågtunnelen", matchTerms: ["hundvågtunnelen", "hundvagtunnelen"] },
+  ryfast: { id: "10-e0a2a18ca95b06c6", name: "Ryfylketunnelen", matchTerms: ["ryfylketunnelen", "ryfast"] },
+  finnoy: { id: "10-92a98043d0a97d1e", name: "Finnøytunnelen", matchTerms: ["finnøytunnelen", "finnoytunnelen", "finnfast"] },
+  talgje: { id: "10-cbdb03f70d66c4c3", name: "Talgjetunnelen", matchTerms: ["talgjetunnelen"] },
+  storhaug: { id: "10-201a7ab572b246cd", name: "Storhaugtunnelen", matchTerms: ["storhaugtunnelen", "storhaug"] },
+};
 function normalizeHistorySeed(seed) {
   const out = {};
   for (const [key, value] of Object.entries(seed || {})) {
@@ -97,27 +107,7 @@ export async function onRequest(context) {
       "skaun",
     ];
 
-    const monitoredTunnelKeywords = [
-      "byfjord",
-      "byfjordtunnelen",
-      "mastrafjord",
-      "mastrafjordtunnelen",
-      "mastra",
-      "eiganes",
-      "eiganestunnelen",
-      "hundvåg",
-      "hundvaag",
-      "hundvågtunnelen",
-      "ryfylke",
-      "ryfast",
-      "ryfylketunnelen",
-      "solbakk",
-      "solbakktunnelen",
-      "storhaug",
-      "storhaugtunnelen",
-      "sotra",
-      "sotrasambandet",
-    ];
+    const monitoredTunnelKeywords = Object.values(TUNNEL_REGISTRY).flatMap((t) => t.matchTerms);
 
     function isStavanger(m) {
       const t = `${m.title || ""} ${m.text || ""} ${m.where || ""}`.toLowerCase();
@@ -142,16 +132,12 @@ export async function onRequest(context) {
       return /stengt|steng[te]|closed?|closure|sperr[et]|blocked?|impassable|ikke farbar/.test(txt);
     }
 
-    const tunnelKeywords = {
-      byfjord: ["byfjord", "byfjordtunnelen"],
-      mastrafjord: ["mastrafjord", "mastrafjordtunnelen", "mastra"],
-      eiganes: ["eiganes", "eiganestunnelen"],
-      hundvag: ["hundvåg", "hundvaag", "hundvågtunnelen"],
-      ryfast: ["ryfast", "ryfylke", "ryfylketunnelen"],
-      sotra: ["sotra", "sotrasambandet"],
-      solbakk: ["solbakk", "solbakktunnelen"],
-      storhaug: ["storhaug", "storhaugtunnelen"],
-    };
+    function messageMatchesTunnel(m, tunnelKey) {
+      const tunnel = TUNNEL_REGISTRY[tunnelKey];
+      if (!tunnel) return false;
+      const txt = `${m.title || ""} ${m.text || ""} ${m.where || ""}`.toLowerCase();
+      return tunnel.matchTerms.some((term) => txt.includes(term));
+    }
 
     function isActiveNow(m) {
       const now = Date.now();
@@ -177,12 +163,9 @@ export async function onRequest(context) {
     const nowIso = new Date().toISOString();
 
     const tunnelHistory = { ...seedHistory, ...previousHistory };
-    for (const [tunnelKey, keywords] of Object.entries(tunnelKeywords)) {
+    for (const tunnelKey of Object.keys(TUNNEL_REGISTRY)) {
       const latestClosure = localOnly
-        .filter((m) => {
-          const txt = `${m.title || ""} ${m.text || ""} ${m.where || ""}`.toLowerCase();
-          return keywords.some((keyword) => txt.includes(keyword)) && isClosureMessage(m);
-        })
+        .filter((m) => messageMatchesTunnel(m, tunnelKey) && isClosureMessage(m))
         .map((m) => m.time || nowIso)
         .filter(Boolean)
         .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
@@ -193,7 +176,7 @@ export async function onRequest(context) {
     }
 
     // Byfjord status heuristikk
-    const byfjordMsg = localOnly.find((m) => `${m.title} ${m.text} ${m.where}`.toLowerCase().includes("byfjord"));
+    const byfjordMsg = localOnly.find((m) => messageMatchesTunnel(m, "byfjord"));
     const byTxt = byfjordMsg ? `${byfjordMsg.title} ${byfjordMsg.text} ${byfjordMsg.where}`.toLowerCase() : "";
 
     let byStatus = "ÅPEN";
@@ -213,6 +196,9 @@ export async function onRequest(context) {
         },
       },
       tunnelHistory,
+      tunnels: Object.fromEntries(
+        Object.entries(TUNNEL_REGISTRY).map(([key, tunnel]) => [key, { id: tunnel.id, name: tunnel.name }])
+      ),
     };
   };
 

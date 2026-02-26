@@ -17,14 +17,14 @@
   };
 
   const TUNNELS = {
-    byfjord: { name: "Byfjordtunnelen", keywords: ["byfjord"], length: 5875 },
-    mastrafjord: { name: "Mastrafjordtunnelen", keywords: ["mastrafjord", "mastra"], length: 4424 },
-    eiganes: { name: "Eiganestunnelen", keywords: ["eiganestunnelen", "eiganes tunnelen", "eiganes"], length: 3174 },
-    hundvag: { name: "Hundvågtunnelen", keywords: ["hundvåg", "hundvaag"], length: 2100 },
-    ryfast: { name: "Ryfylketunnelen", keywords: ["ryfast", "ryfylke", "solbakk"], length: 14300 },
-    finnoy: { name: "Finnøytunnelen", keywords: ["finnøy", "finnøytunnelen", "finnfast"], length: 5685 },
-    talgje: { name: "Talgjetunnelen", keywords: ["talgje", "talgjetunnelen"], length: 1467 },
-    storhaug: { name: "Storhaugtunnelen", keywords: ["storhaug"], length: 1100 }
+    byfjord: { id: "10-8383248394a8c41b", name: "Byfjordtunnelen", keywords: ["byfjordtunnelen", "byfjord"], length: 5875 },
+    mastrafjord: { id: "10-31b9ef1302194439", name: "Mastrafjordtunnelen", keywords: ["mastrafjordtunnelen", "mastrafjord"], length: 4424 },
+    eiganes: { id: "10-3e9b280fc15f0540", name: "Eiganestunnelen", keywords: ["eiganestunnelen"], length: 3174 },
+    hundvag: { id: "10-746700d70a0dd7cd", name: "Hundvågtunnelen", keywords: ["hundvågtunnelen", "hundvagtunnelen"], length: 2100 },
+    ryfast: { id: "10-e0a2a18ca95b06c6", name: "Ryfylketunnelen", keywords: ["ryfylketunnelen", "ryfast"], length: 14300 },
+    finnoy: { id: "10-92a98043d0a97d1e", name: "Finnøytunnelen", keywords: ["finnøytunnelen", "finnoytunnelen", "finnfast"], length: 5685 },
+    talgje: { id: "10-cbdb03f70d66c4c3", name: "Talgjetunnelen", keywords: ["talgjetunnelen"], length: 1467 },
+    storhaug: { id: "10-201a7ab572b246cd", name: "Storhaugtunnelen", keywords: ["storhaugtunnelen", "storhaug"], length: 1100 }
   };
 
   const STATE = {
