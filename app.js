@@ -123,15 +123,10 @@
       const d = new Date(iso);
       if (Number.isNaN(d.getTime())) return "Ukjent";
 
-      const now = new Date();
-      const sameDay = d.toDateString() === now.toDateString();
-      if (sameDay) {
-        return d.toLocaleTimeString("no-NO", { hour: "2-digit", minute: "2-digit" });
-      }
-
       return d.toLocaleString("no-NO", {
         day: "2-digit",
         month: "2-digit",
+        year: "numeric",
         hour: "2-digit",
         minute: "2-digit"
       });
