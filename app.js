@@ -135,6 +135,22 @@
     }
   }
 
+  function getTunnelMetaText(messages) {
+    if (!messages.length) return "Ingen aktiv melding";
+
+    const primary = messages[0];
+    if (primary?.overallEndTime) {
+      return `Gyldig til: ${fmtClosedTime(primary.overallEndTime)}`;
+    }
+
+    const updatedAt = primary?.versionTime || primary?.time;
+    if (updatedAt) {
+      return `Oppdatert: ${fmtClosedTime(updatedAt)}`;
+    }
+
+    return "Aktiv melding";
+  }
+
   async function loadWeather() {
     try {
       const response = await fetch(`${CONFIG.weatherApi}?lat=${CONFIG.weatherLat}&lon=${CONFIG.weatherLon}`, {
@@ -270,8 +286,7 @@
         : "Ingen merknader";
       
       const lengthText = tunnel.length > 0 ? `${(tunnel.length/1000).toFixed(1)} km` : "";
-      const lastClosedIso = STATE.lastClosedAtByTunnel[key];
-      const lastClosedText = lastClosedIso ? `Stengt sist: ${fmtClosedTime(lastClosedIso)}` : "Sist stengt: Ikke registrert";
+      const tunnelMetaText = getTunnelMetaText(tunnelMessages);
 
       return `
         <div class="tunnelItem ${statusClass}">
@@ -280,7 +295,7 @@
               <div class="statusDot ${statusClass}"></div>
               <span class="statusLabel">${statusText}</span>
             </div>
-            <span class="tunnelTime">${lastClosedText}</span>
+            <span class="tunnelTime">${tunnelMetaText}</span>
           </div>
           <h3 class="tunnelItemName">${tunnel.name}</h3>
           ${lengthText ? `<div class="tunnelItemLength">${lengthText}</div>` : ''}
