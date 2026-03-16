@@ -32,6 +32,7 @@
     lastSuccessfulUpdate: null,
     isRefreshing: false,
     tunnelStatuses: {},
+    tunnelTrafficFlow: {},
     allMessages: [],
     messagesByTunnel: {},
     scheduledRetryId: null,
@@ -52,6 +53,8 @@
 
   Object.keys(TUNNELS).forEach(key => { STATE.tunnelStatuses[key] = "ÅPEN"; });
   STATE.lastClosedAtByTunnel = readTunnelHistory();
+
+  Object.keys(TUNNELS).forEach(key => { STATE.tunnelTrafficFlow[key] = "GREEN"; });
 
   function readOfflineCache() {
     try {
@@ -239,6 +242,68 @@
     return "ÅPEN";
   }
 
+  function determineTrafficFlow(messages, tunnelKey) {
+    const relevantMessages = messages
+      .filter(msg => isRelevantToTunnel(msg, tunnelKey))
+      .filter(msg => isMessageActiveNow(msg))
+      .sort((a, b) => new Date(b.time || 0) - new Date(a.time || 0));
+
+    if (relevantMessages.length === 0) return "GREEN";
+
+    for (const msg of relevantMessages) {
+      const txt = `${msg.title || ""} ${msg.text || ""}`.toLowerCase();
+      if (/stillest[åa]ende|sv[æa]rt tett trafikk|lange k[øo]er|lang k[øo]|k[øo] over|store forsinkelser|betydelig forsinkelse|sakteg[åa]ende/.test(txt)) {
+        return "RED";
+      }
+    }
+
+    for (const msg of relevantMessages) {
+      const txt = `${msg.title || ""} ${msg.text || ""}`.toLowerCase();
+      if (/k[øo]|tett trafikk|forsinkelse|redusert hastighet|redusert framkommelighet|framkommelighet|ulykke|trafikkulykke|kolonne|lysregulering|dirigering|stans/.test(txt)) {
+        return "YELLOW";
+      }
+    }
+
+    return "GREEN";
+  }
+
+  function getTrafficFlowMeta(flow) {
+    switch (flow) {
+      case "RED":
+        return { className: "traffic-red", label: "Rød", description: "Treg eller tett trafikk" };
+      case "YELLOW":
+        return { className: "traffic-yellow", label: "Gul", description: "Noe treg trafikk" };
+      default:
+        return { className: "traffic-green", label: "Grønn", description: "Normal flyt" };
+    }
+  }
+
+  function getTrafficFlowDisplayMeta(flow) {
+    switch (flow) {
+      case "RED":
+        return {
+          className: "traffic-red",
+          level: "Høy",
+          icon: "🔴",
+          description: "Høy trafikkbelastning med treg eller tett trafikk"
+        };
+      case "YELLOW":
+        return {
+          className: "traffic-yellow",
+          level: "Middels",
+          icon: "🟡",
+          description: "Middels trafikkbelastning med noe treg flyt"
+        };
+      default:
+        return {
+          className: "traffic-green",
+          level: "Lav",
+          icon: "🟢",
+          description: "Lav trafikkbelastning og normal flyt"
+        };
+    }
+  }
+
   function updateTunnelClosureHistory(defaultTimeIso) {
     const nextHistory = { ...STATE.lastClosedAtByTunnel };
 
@@ -271,6 +336,8 @@
     if (!dom.tunnelsGrid) return;
     
     const html = Object.entries(TUNNELS).map(([key, tunnel]) => {
+      const trafficFlow = STATE.tunnelTrafficFlow[key] || "GREEN";
+      const trafficMeta = getTrafficFlowDisplayMeta(trafficFlow);
       const status = STATE.tunnelStatuses[key] || "ÅPEN";
       const statusClass = 
         status === "ÅPEN" ? "status-open" :
@@ -299,6 +366,14 @@
           </div>
           <h3 class="tunnelItemName">${tunnel.name}</h3>
           ${lengthText ? `<div class="tunnelItemLength">${lengthText}</div>` : ''}
+          <div class="trafficFlowRow">
+            <span class="trafficFlowLabel">Trafikkflyt</span>
+            <span class="trafficFlowBadge ${trafficMeta.className}">
+              <span class="trafficFlowIcon" aria-hidden="true">${trafficMeta.icon}</span>
+              <span class="trafficFlowLevel">${trafficMeta.level}</span>
+            </span>
+          </div>
+          <div class="trafficFlowText">${trafficMeta.description}</div>
           <div class="tunnelItemReason">${esc(reason)}</div>
         </div>
       `;
@@ -341,6 +416,7 @@
 
       Object.keys(TUNNELS).forEach(tunnelKey => {
         STATE.tunnelStatuses[tunnelKey] = determineTunnelStatus(STATE.allMessages, tunnelKey);
+        STATE.tunnelTrafficFlow[tunnelKey] = determineTrafficFlow(STATE.allMessages, tunnelKey);
       });
       if (data.tunnelHistory && typeof data.tunnelHistory === "object") {
         STATE.lastClosedAtByTunnel = { ...data.tunnelHistory };
@@ -415,6 +491,7 @@
           rebuildTunnelMessageIndex(STATE.allMessages);
           Object.keys(TUNNELS).forEach(tunnelKey => {
             STATE.tunnelStatuses[tunnelKey] = determineTunnelStatus(STATE.allMessages, tunnelKey);
+            STATE.tunnelTrafficFlow[tunnelKey] = determineTrafficFlow(STATE.allMessages, tunnelKey);
           });
           updateTunnelClosureHistory(cached.updated);
           renderTunnelsGrid();

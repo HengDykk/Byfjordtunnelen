@@ -193,6 +193,58 @@ body {
   margin-bottom: 8px;
   font-family: 'JetBrains Mono', monospace;
 }
+.trafficFlowRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 10px 0 6px;
+}
+.trafficFlowLabel {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-family: 'JetBrains Mono', monospace;
+}
+.trafficFlowBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 72px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid currentColor;
+}
+.trafficFlowIcon {
+  font-size: 14px;
+  line-height: 1;
+}
+.trafficFlowLevel {
+  line-height: 1;
+}
+.trafficFlowBadge.traffic-green {
+  color: var(--good);
+  background: rgba(0, 255, 136, 0.08);
+}
+.trafficFlowBadge.traffic-yellow {
+  color: var(--warn);
+  background: rgba(255, 184, 0, 0.10);
+}
+.trafficFlowBadge.traffic-red {
+  color: var(--bad);
+  background: rgba(255, 51, 51, 0.10);
+}
+.trafficFlowText {
+  font-size: 13px;
+  color: var(--text);
+  opacity: 0.85;
+}
 .tunnelItemReason {
   font-size: 14px;
   color: var(--muted);
