@@ -1,8 +1,6 @@
 // functions/api/combined.js
 
 const MANUAL_TUNNEL_HISTORY_SEED = {
-  // Midlertidig manuell seed, brukes kun hvis vi mangler sentral historikk.
-  // Oppdater disse datoene ved behov.
   byfjord: "2026-02-25T14:45:00+01:00",
   mastrafjord: "",
   eiganes: "",
@@ -24,22 +22,15 @@ const TUNNEL_REGISTRY = {
   storhaug: { id: "10-201a7ab572b246cd", name: "Storhaugtunnelen", matchTerms: ["storhaugtunnelen"] },
 };
 
-const TRAVEL_TIME_WFS_URL =
-  "https://ogckart-sn1.atlas.vegvesen.no/datex_3_1/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=datex_3_1%3ATravelTimeSimple&outputFormat=application%2Fjson&bbox=5.2,58.85,6.3,59.25,EPSG:4326&maxFeatures=400";
-
-const TRAVEL_TIME_ROUTE_MATCHERS = {
-  byfjord: [
-    "auglendshøyden - dusavik",
-    "dusavik - auglendshøyden",
-    "tjensvoll - dusavik",
-    "dusavik - tjensvoll",
-  ],
-  eiganes: [
-    "auglendshøyden - tjensvoll",
-    "tjensvoll - auglendshøyden",
-    "tjensvoll - madlaveien ved dnb arena",
-    "madlaveien ved dnb arena - tjensvoll",
-  ],
+const TOMTOM_FLOW_POINTS = {
+  byfjord: { lat: 59.0248, lon: 5.7265 },
+  mastrafjord: { lat: 59.0797, lon: 5.6823 },
+  eiganes: { lat: 58.9628, lon: 5.7178 },
+  hundvag: { lat: 58.9869, lon: 5.7488 },
+  ryfast: { lat: 58.9778, lon: 5.7754 },
+  finnoy: { lat: 59.1705, lon: 5.8443 },
+  talgje: null,
+  storhaug: { lat: 58.9558, lon: 5.7461 },
 };
 
 function normalizeHistorySeed(seed) {
@@ -53,113 +44,56 @@ function normalizeHistorySeed(seed) {
   return out;
 }
 
-function normalizeText(value) {
-  return String(value || "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim();
+function classifyTomTomFlow(segment) {
+  if (!segment) return "UNKNOWN";
+  if (segment.roadClosure) return "RED";
+
+  const currentSpeed = Number(segment.currentSpeed);
+  const freeFlowSpeed = Number(segment.freeFlowSpeed);
+  const currentTravelTime = Number(segment.currentTravelTime);
+  const freeFlowTravelTime = Number(segment.freeFlowTravelTime);
+
+  const speedRatio =
+    Number.isFinite(currentSpeed) && Number.isFinite(freeFlowSpeed) && freeFlowSpeed > 0
+      ? currentSpeed / freeFlowSpeed
+      : null;
+  const delayPct =
+    Number.isFinite(currentTravelTime) && Number.isFinite(freeFlowTravelTime) && freeFlowTravelTime > 0
+      ? ((currentTravelTime - freeFlowTravelTime) / freeFlowTravelTime) * 100
+      : null;
+
+  if ((speedRatio !== null && speedRatio <= 0.4) || (delayPct !== null && delayPct >= 50)) return "RED";
+  if ((speedRatio !== null && speedRatio <= 0.75) || (delayPct !== null && delayPct >= 20)) return "YELLOW";
+  if (speedRatio !== null || delayPct !== null) return "GREEN";
+  return "UNKNOWN";
 }
 
-function scoreTravelFlow(feature) {
-  const missingData = Boolean(feature?.missingData);
-  const delayedPercent = Number(feature?.delayedPercent);
-  const delayAbs = Number.isFinite(delayedPercent) ? Math.abs(delayedPercent) : 0;
-  return (missingData ? 0 : 1000) + delayAbs;
+function buildUnknownTomTomFlow(coverage = "unavailable") {
+  return {
+    source: "tomtom-flow",
+    coverage,
+    level: "UNKNOWN",
+    routeDescription: "",
+    currentRoadName: "",
+    currentSpeed: null,
+    freeFlowSpeed: null,
+    currentTravelTime: null,
+    freeFlowTravelTime: null,
+    confidence: null,
+    roadClosure: false,
+    updated: "",
+  };
 }
 
-function classifyTravelFlow(feature) {
-  if (!feature || feature.missingData) return null;
-
-  const status = normalizeText(feature.trafficStatusValue);
-  const delayedPercent = Number(feature.delayedPercent);
-
-  if (/stationary|stopandgo|closed/.test(status)) return "RED";
-  if (/heavy|congested|slow/.test(status)) {
-    return Number.isFinite(delayedPercent) && delayedPercent >= 20 ? "RED" : "YELLOW";
-  }
-  if (/freeflow/.test(status)) {
-    if (Number.isFinite(delayedPercent) && delayedPercent >= 20) return "RED";
-    if (Number.isFinite(delayedPercent) && delayedPercent >= 8) return "YELLOW";
-    return "GREEN";
-  }
-
-  if (Number.isFinite(delayedPercent) && delayedPercent >= 20) return "RED";
-  if (Number.isFinite(delayedPercent) && delayedPercent >= 8) return "YELLOW";
-  if (Number.isFinite(delayedPercent)) return "GREEN";
-  return null;
-}
-
-function summarizeTravelFlows(features) {
-  const byRoute = new Map();
-
-  for (const feature of features || []) {
-    const props = feature?.properties || {};
-    const route = normalizeText(props.locationDescription);
-    if (!route) continue;
-
-    const next = {
-      locationDescription: props.locationDescription || "",
-      trafficStatusValue: props.trafficStatusValue || "",
-      actualTime: props.actualTime,
-      expectedTime: props.expectedTime,
-      delayedTime: props.delayedTime,
-      delayedPercent: props.delayedPercent,
-      trendType: props.trendType || "",
-      missingData: Boolean(props.missingData),
-      updated: props.sistOppdatert || props.publicationTime || "",
-    };
-
-    const prev = byRoute.get(route);
-    if (!prev || scoreTravelFlow(next) > scoreTravelFlow(prev)) {
-      byRoute.set(route, next);
-    }
-  }
-
-  const result = {};
-
-  for (const tunnelKey of Object.keys(TUNNEL_REGISTRY)) {
-    const routeTerms = TRAVEL_TIME_ROUTE_MATCHERS[tunnelKey] || [];
-    const candidates = routeTerms
-      .map((term) => byRoute.get(term))
-      .filter(Boolean)
-      .sort((a, b) => scoreTravelFlow(b) - scoreTravelFlow(a));
-
-    const best = candidates[0];
-    const level = classifyTravelFlow(best);
-
-    result[tunnelKey] = best && level
-      ? {
-          source: "travel-time",
-          coverage: "nearest-measured-route",
-          level,
-          routeDescription: best.locationDescription,
-          trafficStatusValue: best.trafficStatusValue,
-          actualTime: best.actualTime,
-          expectedTime: best.expectedTime,
-          delayedTime: best.delayedTime,
-          delayedPercent: best.delayedPercent,
-          trendType: best.trendType,
-          updated: best.updated,
-        }
-      : {
-          source: "travel-time",
-          coverage: routeTerms.length ? "no-live-data" : "unavailable",
-          level: "UNKNOWN",
-          routeDescription: best?.locationDescription || "",
-          updated: best?.updated || "",
-        };
-  }
-
-  return result;
-}
-
-async function fetchTravelTimeData(timeoutMs) {
+async function fetchTomTomFlowForPoint(apiKey, point, tunnelKey, timeoutMs) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetch(TRAVEL_TIME_WFS_URL, {
+    const url =
+      `https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/14/json?key=${encodeURIComponent(apiKey)}` +
+      `&point=${point.lat},${point.lon}&unit=KMPH`;
+    const response = await fetch(url, {
       method: "GET",
       signal: controller.signal,
       headers: {
@@ -167,22 +101,62 @@ async function fetchTravelTimeData(timeoutMs) {
         Accept: "application/json",
       },
       cf: {
-        cacheTtl: 60,
+        cacheTtl: 30,
         cacheEverything: true,
       },
     });
 
     if (!response.ok) {
-      return summarizeTravelFlows([]);
+      return buildUnknownTomTomFlow("api-error");
     }
 
     const payload = await response.json().catch(() => null);
-    return summarizeTravelFlows(payload?.features || []);
+    const segment = payload?.flowSegmentData;
+    if (!segment || typeof segment !== "object") {
+      return buildUnknownTomTomFlow("missing-segment");
+    }
+
+    return {
+      source: "tomtom-flow",
+      coverage: "segment-point",
+      level: classifyTomTomFlow(segment),
+      routeDescription: segment.currentRoadName || TUNNEL_REGISTRY[tunnelKey]?.name || "",
+      currentRoadName: segment.currentRoadName || "",
+      currentSpeed: segment.currentSpeed,
+      freeFlowSpeed: segment.freeFlowSpeed,
+      currentTravelTime: segment.currentTravelTime,
+      freeFlowTravelTime: segment.freeFlowTravelTime,
+      confidence: segment.confidence,
+      roadClosure: Boolean(segment.roadClosure),
+      updated: new Date().toISOString(),
+    };
   } catch {
-    return summarizeTravelFlows([]);
+    return buildUnknownTomTomFlow("request-failed");
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+async function fetchTomTomTrafficData(env, timeoutMs) {
+  const apiKey = String(env.TOMTOM_API_KEY || "").trim();
+  if (!apiKey) {
+    return Object.fromEntries(
+      Object.keys(TUNNEL_REGISTRY).map((key) => [key, buildUnknownTomTomFlow("missing-api-key")])
+    );
+  }
+
+  const entries = await Promise.all(
+    Object.entries(TUNNEL_REGISTRY).map(async ([tunnelKey]) => {
+      const point = TOMTOM_FLOW_POINTS[tunnelKey];
+      if (!point) {
+        return [tunnelKey, buildUnknownTomTomFlow("unconfigured-point")];
+      }
+      const flow = await fetchTomTomFlowForPoint(apiKey, point, tunnelKey, timeoutMs);
+      return [tunnelKey, flow];
+    })
+  );
+
+  return Object.fromEntries(entries);
 }
 
 export async function onRequest(context) {
@@ -211,8 +185,6 @@ export async function onRequest(context) {
   }
 
   const buildPayload = (messagesClean, travelFlowByTunnel = {}, previousHistory = {}, seedHistory = {}) => {
-    // Strengt kommune filter: krev lokal stedsreferanse, ikke vegnummer.
-    // Ikke ha E39 her, den ødelegger alt.
     const stavangerMustHave = [
       "stavanger",
       "byfjord",
@@ -230,8 +202,6 @@ export async function onRequest(context) {
       "jåttå",
       "mariero",
       "forus",
-
-      // Stavanger kommune inkluderer øyene
       "rennesøy",
       "finnøy",
       "mosterøy",
@@ -239,7 +209,6 @@ export async function onRequest(context) {
       "vassøy",
     ];
 
-    // Ekskluder nabokommuner som ofte dukker opp i tekst
     const stavangerExclude = [
       "sandnes",
       "sola",
@@ -263,9 +232,6 @@ export async function onRequest(context) {
 
     function isStavanger(m) {
       const t = `${m.title || ""} ${m.text || ""} ${m.where || ""}`.toLowerCase();
-
-      // Behold alltid meldinger for tunneler vi overvåker,
-      // selv om teksten også nevner nabokommuner (f.eks. Randaberg).
       const isMonitoredTunnel = monitoredTunnelKeywords.some((w) => t.includes(w));
       if (isMonitoredTunnel) return true;
 
@@ -277,7 +243,6 @@ export async function onRequest(context) {
 
       return true;
     }
-
 
     function isClosureMessage(m) {
       const txt = `${m.title || ""} ${m.text || ""}`.toLowerCase();
@@ -308,12 +273,9 @@ export async function onRequest(context) {
 
     const activeMessages = messagesClean.filter(isActiveNow);
     const stavangerOnly = activeMessages.filter(isStavanger);
-
-    // Fallback hvis tomt, ellers begrens til 25
     const localOnly = stavangerOnly.length ? stavangerOnly.slice(0, 25) : activeMessages.slice(0, 25);
 
     const nowIso = new Date().toISOString();
-
     const tunnelHistory = { ...seedHistory, ...previousHistory };
     for (const tunnelKey of Object.keys(TUNNEL_REGISTRY)) {
       const latestClosure = localOnly
@@ -327,7 +289,6 @@ export async function onRequest(context) {
       }
     }
 
-    // Byfjord status heuristikk
     const byfjordMsg = localOnly.find((m) => messageMatchesTunnel(m, "byfjord"));
     const byTxt = byfjordMsg ? `${byfjordMsg.title} ${byfjordMsg.text} ${byfjordMsg.where}`.toLowerCase() : "";
 
@@ -366,15 +327,15 @@ export async function onRequest(context) {
 
     const [res, travelFlowByTunnel] = await Promise.all([
       fetch(upstream, {
-      method: "GET",
-      headers,
-      signal: controller.signal,
-      cf: {
-        cacheTtl: 30,
-        cacheEverything: true,
-      },
+        method: "GET",
+        headers,
+        signal: controller.signal,
+        cf: {
+          cacheTtl: 30,
+          cacheEverything: true,
+        },
       }),
-      fetchTravelTimeData(timeoutMs),
+      fetchTomTomTrafficData(env, timeoutMs),
     ]);
 
     clearTimeout(timeoutId);
@@ -401,8 +362,6 @@ export async function onRequest(context) {
     }
 
     const rawMessages = extractMessagesFromDatex(xml);
-
-    // Dedup på tekst og lokasjon
     const seen = new Set();
     const messagesClean = [];
     for (const m of rawMessages) {
@@ -482,10 +441,6 @@ function json(obj, status, cacheControl = "no-store") {
   });
 }
 
-/**
- * Robust DATEX extractor uten DOMParser
- * Henter comment og forsøker å trekke ut lokasjon, vegnummer, sted og retning
- */
 function extractMessagesFromDatex(xml) {
   const records =
     xml.match(/<[^:>]*:?situationRecord\b[\s\S]*?<\/[^:>]*:?situationRecord>/g) || [];
@@ -539,7 +494,6 @@ function extractMessagesFromDatex(xml) {
   };
 
   const buildWhere = (r) => {
-    // Disse taggene varierer mellom records, vi prøver flere
     const roadNumber = pick(r, "roadNumber") || pick(r, "road") || "";
     const roadName = pick(r, "roadName") || pick(r, "roadNameText") || "";
     const locationDesc =
@@ -549,24 +503,19 @@ function extractMessagesFromDatex(xml) {
       "";
     const direction = pick(r, "direction") || pick(r, "directionOfTravel") || "";
 
-    // Noen feeds har referanser med tekst i flere felt
     const placeBits = [
       ...pickAll(r, "name"),
       ...pickAll(r, "tpegDescriptor"),
       ...pickAll(r, "pointDescriptor"),
     ].slice(0, 4);
 
-    const parts = [
+    return uniqJoin([
       roadNumber,
       roadName,
       direction,
       locationDesc,
       placeBits.join(" "),
-    ];
-
-    // Rydd bort alt som bare er ord som ikke hjelper
-    const where = uniqJoin(parts).trim();
-    return where;
+    ]).trim();
   };
 
   const messages = [];
@@ -587,7 +536,6 @@ function extractMessagesFromDatex(xml) {
     const where = buildWhere(r);
     const typeMatch = r.match(/<[^:>]*:?situationRecord\b[^>]*\bxsi:type="[^:"]*:([^"]+)"/i);
     const recordType = typeMatch ? typeMatch[1] : "";
-
     const title = text ? text.split(".")[0].slice(0, 90) : "Trafikkmelding";
 
     if (!title && !text) continue;

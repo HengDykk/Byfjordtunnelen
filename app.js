@@ -313,7 +313,7 @@
 
     return {
       level: flow.level || "UNKNOWN",
-      source: flow.source || "travel-time",
+      source: flow.source || "tomtom-flow",
       coverage: flow.coverage || "unavailable",
       routeDescription: flow.routeDescription || "",
       trafficStatusValue: flow.trafficStatusValue || "",
@@ -341,52 +341,52 @@
           className: "traffic-red",
           level: "Høy",
           icon: "🔴",
-          description: "Høy trafikkbelastning basert på reisetidsdata"
+          description: "Høy trafikkbelastning basert på TomTom sanntidsdata"
         };
       case "YELLOW":
         return {
           className: "traffic-yellow",
           level: "Middels",
           icon: "🟡",
-          description: "Middels trafikkbelastning basert på reisetidsdata"
+          description: "Middels trafikkbelastning basert på TomTom sanntidsdata"
         };
       case "UNKNOWN":
         return {
           className: "traffic-unknown",
           level: "Ingen data",
           icon: "⚪",
-          description: "Ingen sanntidsmåling fra Vegvesenet for denne tunnelen"
+          description: "Ingen sanntidsmåling fra TomTom for denne tunnelen"
         };
       default:
         return {
           className: "traffic-green",
           level: "Lav",
           icon: "🟢",
-          description: "Lav trafikkbelastning basert på reisetidsdata"
+          description: "Lav trafikkbelastning basert på TomTom sanntidsdata"
         };
     }
   }
 
   function getTrafficFlowDetails(flow) {
     if (!flow || flow.level === "UNKNOWN") {
-      return "Ingen sanntidsmåling tilgjengelig i Vegvesenets reisetidsfeed.";
+      return "Ingen sanntidsmåling tilgjengelig fra TomTom for denne tunnelen.";
     }
 
     const parts = [];
-    if (flow.routeDescription) {
-      parts.push(`Målt via ${flow.routeDescription}.`);
+    if (flow.currentRoadName) {
+      parts.push(`Målt på ${flow.currentRoadName}.`);
     }
 
-    const actual = fmtDurationSeconds(flow.actualTime);
-    const expected = fmtDurationSeconds(flow.expectedTime);
-    if (actual && expected) {
-      parts.push(`Reisetid ${actual} mot normalt ${expected}.`);
+    const currentSpeed = Number(flow.currentSpeed);
+    const freeFlowSpeed = Number(flow.freeFlowSpeed);
+    if (Number.isFinite(currentSpeed) && Number.isFinite(freeFlowSpeed)) {
+      parts.push(`Hastighet ${Math.round(currentSpeed)} km/t mot normal ${Math.round(freeFlowSpeed)} km/t.`);
     }
 
-    const delayedPercent = Number(flow.delayedPercent);
-    if (Number.isFinite(delayedPercent)) {
-      const sign = delayedPercent > 0 ? "+" : "";
-      parts.push(`${sign}${delayedPercent}% mot referanse.`);
+    const currentTravelTime = fmtDurationSeconds(flow.currentTravelTime);
+    const freeFlowTravelTime = fmtDurationSeconds(flow.freeFlowTravelTime);
+    if (currentTravelTime && freeFlowTravelTime) {
+      parts.push(`Reisetid ${currentTravelTime} mot fri flyt ${freeFlowTravelTime}.`);
     }
 
     return parts.join(" ");
