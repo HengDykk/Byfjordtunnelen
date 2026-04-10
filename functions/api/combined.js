@@ -159,6 +159,100 @@ async function fetchTomTomTrafficData(env, timeoutMs) {
   return Object.fromEntries(entries);
 }
 
+function normalizeLookupText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function mapPoliceSeverity(message) {
+  const txt = normalizeLookupText(`${message?.text || ""} ${message?.area || ""}`);
+  if (/stengt|sperr|blokk|personskade|pakjort|nodetat|dirigerer|trafikale utfordringer|store forsinkelser|ko/.test(txt)) {
+    return "HIGH";
+  }
+  if (/ulykke|uhell|berg|trafikk/.test(txt)) {
+    return "MEDIUM";
+  }
+  return "INFO";
+}
+
+function isRelevantPoliceTrafficMessage(message) {
+  const category = normalizeLookupText(message?.category);
+  if (category === "trafikk") return true;
+
+  const txt = normalizeLookupText(`${message?.text || ""} ${message?.area || ""}`);
+  return /trafikk|ulykke|uhell|bil|kjoretoy|e39|rv|fv|vei|veg|felt|kryss|pakjort/.test(txt);
+}
+
+const RECENT_POLICE_LOOKBACK_MS = 2 * 60 * 60 * 1000;
+
+async function fetchPolitiloggenTrafficMessages(timeoutMs) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const url = new URL("https://api.politiet.no/politiloggen/v1/messages");
+    url.searchParams.append("Districts", "SørVest");
+    url.searchParams.append("Municipalities", "Stavanger");
+    url.searchParams.append("Categories", "Trafikk");
+    url.searchParams.append("Categories", "Ulykke");
+    url.searchParams.set("DateFrom", new Date(Date.now() - RECENT_POLICE_LOOKBACK_MS).toISOString());
+    url.searchParams.set("Take", "30");
+    url.searchParams.set("SortBy", "Date");
+    url.searchParams.set("SortOrder", "Descending");
+
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Byfjordtunnelen/1.0 (Cloudflare Pages)",
+        Accept: "application/json",
+      },
+      cf: {
+        cacheTtl: 30,
+        cacheEverything: true,
+      },
+    });
+
+    if (!response.ok) return [];
+
+    const payload = await response.json().catch(() => null);
+    const items = Array.isArray(payload?.data) ? payload.data : [];
+
+    return items
+      .filter((message) => normalizeLookupText(message?.municipality) === "stavanger")
+      .filter(isRelevantPoliceTrafficMessage)
+      .slice(0, 10)
+      .map((message) => ({
+        id: message.id || "",
+        title: `Politiet: ${message.category || "Trafikk"}`,
+        text: String(message.text || "").trim(),
+        where: [message.municipality, message.area].filter(Boolean).join(" • "),
+        municipality: message.municipality || "",
+        area: message.area || "",
+        severity: mapPoliceSeverity(message),
+        time: message.updatedOn || message.createdOn || "",
+        versionTime: message.updatedOn || "",
+        validityStatus: message.isActive ? "active" : "inactive",
+        overallStartTime: message.createdOn || "",
+        overallEndTime: "",
+        trafficConstrictionType: "",
+        roadManagementType: "",
+        recordType: "PoliceLog",
+        sourceType: "police",
+        sourceLabel: message.isActive ? "Politiet" : "Politiet • nylig avsluttet",
+        isActive: Boolean(message.isActive),
+      }));
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export async function onRequest(context) {
   const env = context.env || {};
   const user = env.DATEX_USER;
@@ -228,12 +322,22 @@ export async function onRequest(context) {
       "skaun",
     ];
 
-    const monitoredTunnelKeywords = Object.values(TUNNEL_REGISTRY).flatMap((t) => t.matchTerms);
+    stavangerMustHave.push("hundvag", "valand", "hillevag", "jatta", "rennesoy", "finnoy", "mosteroy", "amoy", "vassoy");
+    stavangerExclude.push("ostfold", "ha");
+
+    const monitoredTunnelKeywords = Object.values(TUNNEL_REGISTRY)
+      .flatMap((t) => t.matchTerms)
+      .map(normalizeLookupText);
 
     function isStavanger(m) {
-      const t = `${m.title || ""} ${m.text || ""} ${m.where || ""}`.toLowerCase();
+      const t = normalizeLookupText(
+        `${m.title || ""} ${m.text || ""} ${m.where || ""} ${m.municipality || ""} ${m.area || ""} ${m.roadName || ""} ${m.roadNumber || ""}`
+      );
+      const municipality = normalizeLookupText(m.municipality);
       const isMonitoredTunnel = monitoredTunnelKeywords.some((w) => t.includes(w));
       if (isMonitoredTunnel) return true;
+
+      if (municipality && municipality !== "stavanger") return false;
 
       const hasLocal = stavangerMustHave.some((w) => t.includes(w));
       if (!hasLocal) return false;
@@ -257,6 +361,8 @@ export async function onRequest(context) {
     }
 
     function isActiveNow(m) {
+      if (m.isActive === false) return false;
+
       const now = Date.now();
       const validityStatus = String(m.validityStatus || "").toLowerCase();
       if (["suspended", "inactive", "closed", "cancelled", "cancelledbyoperator"].includes(validityStatus)) {
@@ -271,9 +377,20 @@ export async function onRequest(context) {
       return true;
     }
 
-    const activeMessages = messagesClean.filter(isActiveNow);
+    function isRecentPoliceMessage(m) {
+      if (m.sourceType !== "police" || m.isActive !== false) return false;
+
+      const eventMs = Date.parse(m.versionTime || m.time || m.overallStartTime || "");
+      if (Number.isNaN(eventMs)) return false;
+
+      return Date.now() - eventMs <= RECENT_POLICE_LOOKBACK_MS;
+    }
+
+    const activeMessages = messagesClean.filter((m) => isActiveNow(m) || isRecentPoliceMessage(m));
     const stavangerOnly = activeMessages.filter(isStavanger);
-    const localOnly = stavangerOnly.length ? stavangerOnly.slice(0, 25) : activeMessages.slice(0, 25);
+    const localOnly = stavangerOnly
+      .sort((a, b) => new Date(b.time || b.versionTime || 0).getTime() - new Date(a.time || a.versionTime || 0).getTime())
+      .slice(0, 25);
 
     const nowIso = new Date().toISOString();
     const tunnelHistory = { ...seedHistory, ...previousHistory };
@@ -325,7 +442,7 @@ export async function onRequest(context) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-    const [res, travelFlowByTunnel] = await Promise.all([
+    const [res, travelFlowByTunnel, policeMessages] = await Promise.all([
       fetch(upstream, {
         method: "GET",
         headers,
@@ -336,6 +453,7 @@ export async function onRequest(context) {
         },
       }),
       fetchTomTomTrafficData(env, timeoutMs),
+      fetchPolitiloggenTrafficMessages(timeoutMs),
     ]);
 
     clearTimeout(timeoutId);
@@ -372,7 +490,11 @@ export async function onRequest(context) {
       messagesClean.push(m);
     }
 
-    const payload = { ...buildPayload(messagesClean, travelFlowByTunnel, previousHistory || {}, seedHistory), source: "live", stale: false };
+    const payload = {
+      ...buildPayload([...messagesClean, ...policeMessages], travelFlowByTunnel, previousHistory || {}, seedHistory),
+      source: "live",
+      stale: false,
+    };
     const response = json(payload, 200, "public, max-age=15, s-maxage=30, stale-while-revalidate=120");
 
     const historyResponse = new Response(JSON.stringify(payload.tunnelHistory || {}), {
@@ -523,6 +645,13 @@ function extractMessagesFromDatex(xml) {
   for (const r of records) {
     const commentRaw = pick(r, "comment");
     const text = (commentRaw || "").trim();
+    const municipality =
+      pick(r, "municipalityName") ||
+      pick(r, "municipality") ||
+      pick(r, "administrativeAreaName") ||
+      "";
+    const roadNumber = pick(r, "roadNumber") || pick(r, "road") || "";
+    const roadName = pick(r, "roadName") || pick(r, "roadNameText") || "";
 
     const severity = pick(r, "severity") || pick(r, "impactOnTraffic") || "INFO";
     const created = pick(r, "situationRecordCreationTime") || pick(r, "versionTime") || "";
@@ -544,6 +673,9 @@ function extractMessagesFromDatex(xml) {
       title,
       text,
       where,
+      municipality,
+      roadNumber,
+      roadName,
       severity: severity || "INFO",
       time: created,
       versionTime,
