@@ -5,13 +5,17 @@ export async function onRequest(context) {
   const id = (url.searchParams.get("id") || "").toLowerCase();
 
   const map = {
+    byfjord_nord: "https://kamera.atlas.vegvesen.no/api/images/1129027_2",
+    byfjord_sor: "https://kamera.atlas.vegvesen.no/api/images/1129027_1",
+    eiganes: "https://kamera.atlas.vegvesen.no/api/images/1129038_2",
+    hundvag_sandnes: "https://kamera.atlas.vegvesen.no/api/images/3001023_1",
     nord: env.CAM_NORD_URL,
     sor: env.CAM_SOR_URL
   };
 
   const upstream = map[id];
   if (!upstream) {
-    return new Response("Ukjent kamera. Bruk id=nord eller id=sor.", { status: 400 });
+    return new Response("Ukjent kamera.", { status: 400 });
   }
 
   const res = await fetch(upstream, {
