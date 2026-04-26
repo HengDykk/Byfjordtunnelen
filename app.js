@@ -174,6 +174,105 @@
     return `<div class="msgItem ${cls}"><span class="msgIcon ${cls}">${icon}</span><div class="msgBody"><div class="msgText">${body}</div>${source}</div></div>`;
   }
 
+  function hasAnyRelevantMessages() {
+    if (Object.values(STATE.messagesByTunnel).some(msgs => msgs.some(m => isMessageActiveNow(m)))) return true;
+    const tunnelMsgKeys = new Set();
+    Object.values(STATE.messagesByTunnel).forEach(msgs =>
+      msgs.filter(m => isMessageActiveNow(m)).forEach(m => tunnelMsgKeys.add(msgKey(m)))
+    );
+    return STATE.allMessages.some(m => {
+      if (!isMessageActiveNow(m)) return false;
+      if (tunnelMsgKeys.has(msgKey(m))) return false;
+      const sev = String(m.severity || "").toUpperCase();
+      return sev === "HIGH" || sev === "HIGHEST" || sev === "MEDIUM";
+    });
+  }
+
+  function renderIdlePanel() {
+    if (!dom.items) return;
+    stopAutoScroll();
+    if (dom.eventCount) dom.eventCount.textContent = "Ingen tunnelhendelser";
+
+    const rows = Object.entries(TUNNELS).map(([key, tunnel]) => {
+      const flow = STATE.tunnelTrafficFlow[key] || { level: "UNKNOWN" };
+      const status = STATE.tunnelStatuses[key] || "ÅPEN";
+      const dotCls = STATUS_CLASS[status] || "status-open";
+      const levelCls = flow.level === "RED" ? "traffic-red" : flow.level === "YELLOW" ? "traffic-yellow" : flow.level === "UNKNOWN" ? "traffic-unknown" : "traffic-green";
+
+      const curSpd = Number(flow.currentSpeed);
+      const freeSpd = Number(flow.freeFlowSpeed);
+      const speedTxt = Number.isFinite(curSpd) && Number.isFinite(freeSpd)
+        ? `${Math.round(curSpd)}&thinsp;/&thinsp;${Math.round(freeSpd)} km/t`
+        : "—";
+
+      const curTime = fmtDurationSeconds(flow.currentTravelTime);
+      const freeTime = fmtDurationSeconds(flow.freeFlowTravelTime);
+      const timeTxt = curTime || "—";
+      const timeExtra = (curTime && freeTime && curTime !== freeTime)
+        ? ` <span class="reisetidNormal">norm. ${freeTime}</span>` : "";
+
+      const lastClosed = STATE.lastClosedAtByTunnel[key];
+      const closureTxt = lastClosed ? `Sist stengt: ${fmtClosedTime(lastClosed)}` : "";
+
+      return `
+        <div class="reisetidRow ${levelCls}">
+          <div class="reisetidLeft">
+            <div class="reisetidName">
+              <div class="tunnelGroupDot ${dotCls}"></div>
+              ${esc(tunnel.name)}
+            </div>
+            ${closureTxt ? `<div class="reisetidMeta">${esc(closureTxt)}</div>` : ""}
+          </div>
+          <div class="reisetidRight">
+            <div class="reisetidSpeed">${speedTxt}</div>
+            <div class="reisetidTime ${levelCls}">${timeTxt}${timeExtra}</div>
+          </div>
+        </div>`;
+    }).join("");
+
+    dom.items.innerHTML = `<div class="reisetidTable">${rows}</div>`;
+  }
+
+  function renderSpotlightCamera(tunnelKey, cameras) {
+    if (!dom.items) return;
+    stopAutoScroll();
+    const tunnel = TUNNELS[tunnelKey];
+    if (dom.eventCount) dom.eventCount.textContent = "Live kamera";
+
+    const imagesHtml = cameras.map(cam => `
+      <figure class="spotlightFigure">
+        <img class="spotlightImage" src="${esc(cam.src)}" alt="${esc(cam.label)}" referrerpolicy="no-referrer">
+        <figcaption class="spotlightCaption">${esc(cam.label)}</figcaption>
+      </figure>`).join("");
+
+    dom.items.innerHTML = `
+      <div class="spotlightPanel">
+        <div class="spotlightHeader">
+          <span class="spotlightTitle">Live kamera</span>
+          <span class="spotlightTunnel">${esc(tunnel.name)}</span>
+        </div>
+        <div class="spotlightImages${cameras.length === 1 ? " single" : ""}">
+          ${imagesHtml}
+        </div>
+      </div>`;
+  }
+
+  function updateRightPanel() {
+    if (hasAnyRelevantMessages()) {
+      updateRightPanel();
+      return;
+    }
+    if (STATE.flippedTunnelKeys.size > 0) {
+      const key = [...STATE.flippedTunnelKeys][0];
+      const cameras = getTunnelCameraSources(key);
+      if (cameras.length > 0) {
+        renderSpotlightCamera(key, cameras);
+        return;
+      }
+    }
+    renderIdlePanel();
+  }
+
   function renderMessagePanel() {
     if (!dom.items) return;
     stopAutoScroll();
@@ -202,18 +301,6 @@
       dom.eventCount.textContent = n > 0
         ? `${n} tunnel${n === 1 ? "hendelse" : "hendelser"}`
         : "Ingen tunnelhendelser";
-    }
-
-    if (groups.length === 0 && generalMsgs.length === 0) {
-      dom.items.innerHTML = `
-        <div class="emptyState">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
-          </svg>
-          <div>Ingen aktive hendelser</div>
-          <div class="emptyStateText">Alle tunneler er åpne og uten merknader</div>
-        </div>`;
-      return;
     }
 
     let html = "";
@@ -359,6 +446,7 @@
 
     STATE.flippedTunnelKeys = new Set();
     renderTunnelsGrid();
+    updateRightPanel();
 
     if (!cameraTunnelKeys.length) return;
 
@@ -371,10 +459,12 @@
       index++;
       STATE.flippedTunnelKeys = new Set([key]);
       renderTunnelsGrid();
+      updateRightPanel();
 
       STATE.tunnelFlipResetId = setTimeout(() => {
         STATE.flippedTunnelKeys = new Set();
         renderTunnelsGrid();
+        updateRightPanel();
       }, SHOW_MS);
     };
 
@@ -765,7 +855,7 @@
       renderTunnelsGrid();
       updateGlobalTheme();
       scheduleTunnelCardRotation();
-      renderMessagePanel();
+      updateRightPanel();
 
       if (dom.updated) dom.updated.textContent = `Oppdatert: ${fmtTime(data.updated)}`;
 
@@ -795,7 +885,7 @@
           renderTunnelsGrid();
           updateGlobalTheme();
           scheduleTunnelCardRotation();
-          renderMessagePanel();
+          updateRightPanel();
           updateHealth(false, "Ingen forbindelse til API (viser sist lagrede data)");
           if (dom.updated && cached.updated) {
             dom.updated.textContent = `Oppdatert: ${fmtTime(cached.updated)} (cache)`;

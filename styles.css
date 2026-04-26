@@ -476,6 +476,10 @@ body {
   .msgText { font-size: 13px; }
   .msgSource { font-size: 10px; }
   .hint { font-size: 12px; }
+  .reisetidName { font-size: 13px; }
+  .reisetidTime { font-size: 14px; }
+  .reisetidSpeed { font-size: 10px; }
+  .reisetidMeta { font-size: 10px; }
   .foot {
     padding: 10px 18px;
   }
@@ -630,6 +634,121 @@ body {
 .emptyState svg { color: var(--good); }
 .emptyState > div:nth-child(2) { font-size: 22px; font-weight: 700; color: var(--text); }
 .emptyStateText { font-size: 15px; }
+
+/* Reisetidstabell (idle panel) */
+.reisetidTable { display: flex; flex-direction: column; gap: 5px; }
+.reisetidRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  background: rgba(255,255,255,0.02);
+}
+.reisetidRow.traffic-green  { border-left-color: var(--good); }
+.reisetidRow.traffic-yellow { border-left-color: var(--warn); }
+.reisetidRow.traffic-red    { border-left-color: var(--bad); }
+.reisetidRow.traffic-unknown { border-left-color: rgba(255,255,255,0.15); }
+.reisetidLeft { flex: 1; min-width: 0; }
+.reisetidName {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.reisetidMeta {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: 'JetBrains Mono', monospace;
+  margin-top: 2px;
+  padding-left: 16px;
+}
+.reisetidRight { text-align: right; flex-shrink: 0; }
+.reisetidSpeed {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: 'JetBrains Mono', monospace;
+}
+.reisetidTime {
+  font-size: 16px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+.reisetidTime.traffic-green  { color: var(--good); }
+.reisetidTime.traffic-yellow { color: var(--warn); }
+.reisetidTime.traffic-red    { color: var(--bad); }
+.reisetidTime.traffic-unknown { color: var(--muted); }
+.reisetidNormal {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 400;
+  display: block;
+  margin-top: 1px;
+}
+
+/* Spotlight camera (right panel when card is flipped) */
+.spotlightPanel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 10px;
+}
+.spotlightHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+}
+.spotlightTitle {
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--info);
+}
+.spotlightTunnel {
+  font-size: 12px;
+  color: var(--muted);
+  font-family: 'JetBrains Mono', monospace;
+}
+.spotlightImages {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+}
+.spotlightFigure {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-height: 0;
+}
+.spotlightImage {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  object-fit: cover;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.04);
+}
+.spotlightCaption {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: 'JetBrains Mono', monospace;
+  text-align: center;
+  flex-shrink: 0;
+}
 
 /* Footer */
 .foot {
