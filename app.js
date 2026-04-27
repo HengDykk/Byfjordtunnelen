@@ -21,7 +21,7 @@
   const TUNNELS = {
     byfjord: { id: "10-8383248394a8c41b", name: "Byfjordtunnelen", keywords: ["byfjordtunnelen", "byfjord"], length: 5875, cameras: [{ id: "byfjord_nord", label: "Mot Byfjordtunnelen" }, { id: "byfjord_sor", label: "Mot Stavanger" }] },
     mastrafjord: { id: "10-31b9ef1302194439", name: "Mastrafjordtunnelen", keywords: ["mastrafjordtunnelen", "mastrafjord"], length: 4424, cameras: [] },
-    eiganes: { id: "10-3e9b280fc15f0540", name: "Eiganestunnelen", keywords: ["eiganestunnelen"], length: 3174, cameras: [{ id: "eiganes", label: "Eiganestunnelen" }] },
+    eiganes: { id: "10-3e9b280fc15f0540", name: "Eiganestunnelen", keywords: ["eiganestunnelen"], length: 3174, cameras: [{ id: "eiganes_e39", label: "E39 mot Sandnes" }, { id: "eiganes", label: "Eiganestunnelen" }] },
     hundvag: { id: "10-746700d70a0dd7cd", name: "Hundvågtunnelen", keywords: ["hundvågtunnelen", "hundvagtunnelen"], length: 2100 },
     ryfast: { id: "10-e0a2a18ca95b06c6", name: "Ryfylketunnelen", keywords: ["ryfylketunnelen", "ryfast"], length: 14300, cameras: [] },
     finnoy: { id: "10-92a98043d0a97d1e", name: "Finnøytunnelen", keywords: ["finnøytunnelen", "finnoytunnelen", "finnfast"], length: 5685 },
@@ -47,7 +47,8 @@
     tunnelFlipResetId: null,
     progressAnimId: null,
     scrollAnimId: null,
-    scrollPauseId: null
+    scrollPauseId: null,
+    cameraRefreshId: null
   };
 
   const dom = {
@@ -259,6 +260,7 @@
 
   function updateRightPanel() {
     if (hasAnyRelevantMessages()) {
+      stopCameraRefresh();
       renderMessagePanel();
       return;
     }
@@ -266,11 +268,12 @@
       const key = [...STATE.flippedTunnelKeys][0];
       const cameras = getTunnelCameraSources(key);
       if (cameras.length > 0) {
+        stopCameraRefresh();
         renderSpotlightCamera(key, cameras);
         return;
       }
     }
-    renderIdlePanel();
+    renderStaticCameraPanel();
   }
 
   function renderMessagePanel() {
@@ -432,6 +435,63 @@
       ...camera,
       src: `/api/cam?id=${encodeURIComponent(camera.id)}&t=${cacheBuster}`
     }));
+  }
+
+  function getAllCameraSources() {
+    const t = Date.now();
+    const cameras = [];
+    for (const [, tunnel] of Object.entries(TUNNELS)) {
+      if (!Array.isArray(tunnel.cameras)) continue;
+      for (const cam of tunnel.cameras) {
+        cameras.push({ ...cam, tunnelName: tunnel.name, src: `/api/cam?id=${encodeURIComponent(cam.id)}&t=${t}` });
+      }
+    }
+    return cameras;
+  }
+
+  function stopCameraRefresh() {
+    if (STATE.cameraRefreshId) {
+      clearInterval(STATE.cameraRefreshId);
+      STATE.cameraRefreshId = null;
+    }
+  }
+
+  function startCameraRefresh() {
+    stopCameraRefresh();
+    STATE.cameraRefreshId = setInterval(() => {
+      const imgs = dom.items?.querySelectorAll(".staticCamImage");
+      if (!imgs?.length) return;
+      const t = Date.now();
+      imgs.forEach(img => {
+        const id = img.dataset.camId;
+        if (id) img.src = `/api/cam?id=${encodeURIComponent(id)}&t=${t}`;
+      });
+    }, 30000);
+  }
+
+  function renderStaticCameraPanel() {
+    if (!dom.items) return;
+    stopAutoScroll();
+
+    const cameras = getAllCameraSources();
+    if (!cameras.length) { renderIdlePanel(); return; }
+
+    if (dom.eventCount) dom.eventCount.textContent = "Veikamera — Live";
+
+    if (dom.items.querySelector(".staticCameraPanel")) {
+      if (!STATE.cameraRefreshId) startCameraRefresh();
+      return;
+    }
+
+    const figures = cameras.map(cam => `
+      <figure class="staticCamFigure">
+        <img class="staticCamImage" src="${esc(cam.src)}" alt="${esc(cam.label)}"
+          referrerpolicy="no-referrer" data-cam-id="${esc(cam.id)}">
+        <figcaption class="staticCamCaption">${esc(cam.tunnelName)} — ${esc(cam.label)}</figcaption>
+      </figure>`).join("");
+
+    dom.items.innerHTML = `<div class="staticCameraPanel">${figures}</div>`;
+    startCameraRefresh();
   }
 
   function scheduleTunnelCardRotation() {
@@ -850,7 +910,6 @@
 
       renderTunnelsGrid();
       updateGlobalTheme();
-      scheduleTunnelCardRotation();
       updateRightPanel();
 
       if (dom.updated) dom.updated.textContent = `Oppdatert: ${fmtTime(data.updated)}`;
@@ -880,7 +939,6 @@
           updateTunnelClosureHistory(cached.updated);
           renderTunnelsGrid();
           updateGlobalTheme();
-          scheduleTunnelCardRotation();
           updateRightPanel();
           updateHealth(false, "Ingen forbindelse til API (viser sist lagrede data)");
           if (dom.updated && cached.updated) {

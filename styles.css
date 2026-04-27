@@ -750,6 +750,33 @@ body {
   flex-shrink: 0;
 }
 
+/* Static camera grid (persistent right panel view) */
+.staticCameraPanel {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.staticCamFigure {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.staticCamImage {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.04);
+}
+.staticCamCaption {
+  font-size: 10px;
+  color: var(--muted);
+  font-family: 'JetBrains Mono', monospace;
+  text-align: center;
+  line-height: 1.4;
+}
+
 /* Footer */
 .foot {
   padding: 12px 20px;

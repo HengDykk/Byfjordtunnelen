@@ -8,6 +8,7 @@ export async function onRequest(context) {
     byfjord_nord: "https://kamera.atlas.vegvesen.no/api/images/1129027_2",
     byfjord_sor: "https://kamera.atlas.vegvesen.no/api/images/1129027_1",
     eiganes: "https://kamera.atlas.vegvesen.no/api/images/1129038_2",
+    eiganes_e39: "https://kamera.atlas.vegvesen.no/api/images/1129038_1",
     hundvag_sandnes: "https://kamera.atlas.vegvesen.no/api/images/3001023_1",
     nord: env.CAM_NORD_URL,
     sor: env.CAM_SOR_URL
